@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CMO Agent — Getting Started</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 50%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(to right, #818cf8, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+        .subtitle { color: #94a3b8; font-size: 1.1rem; margin-bottom: 2rem; }
+        .card {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .card:hover { border-color: rgba(129, 140, 248, 0.3); transform: translateY(-1px); }
+        .card.done { border-color: rgba(34, 197, 94, 0.3); opacity: 0.7; }
+        .card.done .step-icon::after { content: ' ✓'; color: #22c55e; }
+        .step-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+        .step-icon { font-size: 1.5rem; }
+        .step-title { font-size: 1.1rem; font-weight: 600; }
+        .step-desc { color: #94a3b8; font-size: 0.9rem; margin-bottom: 0.75rem; }
+        pre {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            color: #a5b4fc;
+            position: relative;
+        }
+        pre .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: rgba(129, 140, 248, 0.2);
+            border: none;
+            color: #818cf8;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        pre .copy-btn:hover { background: rgba(129, 140, 248, 0.4); }
+        .quick-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        .link-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            text-decoration: none;
+            color: #e2e8f0;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .link-card:hover { border-color: rgba(129, 140, 248, 0.3); }
+        .link-card .link-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+        .link-card .link-title { font-weight: 600; }
+        .status-bar {
+            display: flex;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            flex-wrap: wrap;
+        }
+        .status-item {
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+        }
+        .status-ok { border-left: 3px solid #22c55e; }
+        .status-down { border-left: 3px solid #ef4444; }
+        .status-loading { border-left: 3px solid #eab308; }
+        .section-title { font-size: 1.3rem; font-weight: 600; margin: 2rem 0 1rem; color: #c7d2fe; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CMO Agent</h1>
+        <p class="subtitle">AI-powered GTM execution for B2B companies. Let's get you set up.</p>
+
+        <div id="status-bar" class="status-bar">
+            <div class="status-item status-loading">Checking services...</div>
+        </div>
+
+        <div class="section-title">Getting Started</div>
+
+        <div class="card" data-step="1" onclick="toggleStep(this)">
+            <div class="step-header">
+                <span class="step-icon">1&#xFE0F;&#x20E3;</span>
+                <span class="step-title">Create Your Workspace</span>
+            </div>
+            <p class="step-desc">Set up your workspace and get your API key. You'll need the admin key from your deployment.</p>
+            <pre><button class="copy-btn" onclick="copyCode(event, this)">Copy</button>curl -X POST http://localhost:8000/api/v1/workspaces \
+  -H "Authorization: Bearer YOUR_ADMIN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Company", "plan": "pro"}'</pre>
+        </div>
+
+        <div class="card" data-step="2" onclick="toggleStep(this)">
+            <div class="step-header">
+                <span class="step-icon">2&#xFE0F;&#x20E3;</span>
+                <span class="step-title">Configure ICP Criteria</span>
+            </div>
+            <p class="step-desc">Define your Ideal Customer Profile — industries, company size, revenue range, and scoring weights.</p>
+            <pre><button class="copy-btn" onclick="copyCode(event, this)">Copy</button>curl http://localhost:8000/admin/config/icp \
+  -H "Authorization: Bearer cmo_YOUR_API_KEY"</pre>
+        </div>
+
+        <div class="card" data-step="3" onclick="toggleStep(this)">
+            <div class="step-header">
+                <span class="step-icon">3&#xFE0F;&#x20E3;</span>
+                <span class="step-title">Connect Your CRM</span>
+            </div>
+            <p class="step-desc">Add your HubSpot or Zoho API keys in .env. Seller briefs and scores will be written back automatically.</p>
+            <pre><button class="copy-btn" onclick="copyCode(event, this)">Copy</button># Add to your .env file:
+CMO_HUBSPOT_API_KEY=your_hubspot_key
+# or
+CMO_ZOHO_CLIENT_ID=your_zoho_id
+CMO_ZOHO_CLIENT_SECRET=your_zoho_secret</pre>
+        </div>
+
+        <div class="card" data-step="4" onclick="toggleStep(this)">
+            <div class="step-header">
+                <span class="step-icon">4&#xFE0F;&#x20E3;</span>
+                <span class="step-title">Upload Knowledge Base</span>
+            </div>
+            <p class="step-desc">Upload your battlecards, case studies, and messaging for personalized outbound.</p>
+            <pre><button class="copy-btn" onclick="copyCode(event, this)">Copy</button>curl -X POST http://localhost:8000/api/v1/kb/upload \
+  -H "Authorization: Bearer cmo_YOUR_API_KEY" \
+  -F "title=Competitor Battlecard" \
+  -F "kb_type=battlecard" \
+  -F "content=## Competitor X\n\nWeaknesses: ..."</pre>
+        </div>
+
+        <div class="card" data-step="5" onclick="toggleStep(this)">
+            <div class="step-header">
+                <span class="step-icon">5&#xFE0F;&#x20E3;</span>
+                <span class="step-title">Run Your First Qualification</span>
+            </div>
+            <p class="step-desc">Create a campaign and trigger account qualification to generate seller briefs.</p>
+            <pre><button class="copy-btn" onclick="copyCode(event, this)">Copy</button># Create a campaign
+curl -X POST http://localhost:8000/campaigns \
+  -H "Authorization: Bearer cmo_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Q1 Outbound", "icp_criteria": {"industries": ["SaaS"]}}'
+
+# Trigger qualification
+curl -X POST http://localhost:8000/api/v1/campaigns/CAMPAIGN_ID/qualify \
+  -H "Authorization: Bearer cmo_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"max_accounts": 10}'</pre>
+        </div>
+
+        <div class="card" data-step="6" onclick="toggleStep(this)">
+            <div class="step-header">
+                <span class="step-icon">6&#xFE0F;&#x20E3;</span>
+                <span class="step-title">Review Seller Briefs</span>
+            </div>
+            <p class="step-desc">Check your generated briefs, export data, and monitor usage.</p>
+            <pre><button class="copy-btn" onclick="copyCode(event, this)">Copy</button># Export briefs
+curl http://localhost:8000/api/v1/export/briefs?format=json \
+  -H "Authorization: Bearer cmo_YOUR_API_KEY"
+
+# Check usage
+curl http://localhost:8000/api/v1/usage \
+  -H "Authorization: Bearer cmo_YOUR_API_KEY"</pre>
+        </div>
+
+        <div class="section-title">Quick Links</div>
+        <div class="quick-links">
+            <a href="/docs" class="link-card">
+                <div class="link-icon">&#128214;</div>
+                <div class="link-title">API Docs</div>
+                <div style="color:#94a3b8;font-size:0.8rem">Swagger UI</div>
+            </a>
+            <a href="/admin/ui" class="link-card">
+                <div class="link-icon">&#9881;&#65039;</div>
+                <div class="link-title">Admin Panel</div>
+                <div style="color:#94a3b8;font-size:0.8rem">ICP & Config</div>
+            </a>
+            <a href="/demo" class="link-card">
+                <div class="link-icon">&#9654;&#65039;</div>
+                <div class="link-title">Live Demo</div>
+                <div style="color:#94a3b8;font-size:0.8rem">Try without setup</div>
+            </a>
+            <a href="/redoc" class="link-card">
+                <div class="link-icon">&#128196;</div>
+                <div class="link-title">ReDoc</div>
+                <div style="color:#94a3b8;font-size:0.8rem">API Reference</div>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        // Check service health
+        fetch('/health')
+            .then(r => r.json())
+            .then(data => {
+                const bar = document.getElementById('status-bar');
+                const services = data.services || {};
+                bar.innerHTML = Object.entries(services).map(([name, status]) => {
+                    const cls = status === 'ok' ? 'status-ok' : 'status-down';
+                    const icon = status === 'ok' ? '&#9679;' : '&#9679;';
+                    return `<div class="status-item ${cls}">${icon} ${name}: ${status}</div>`;
+                }).join('');
+            })
+            .catch(() => {
+                document.getElementById('status-bar').innerHTML =
+                    '<div class="status-item status-down">&#9679; API unreachable</div>';
+            });
+
+        // Step completion tracking
+        function toggleStep(card) {
+            if (event.target.classList.contains('copy-btn')) return;
+            card.classList.toggle('done');
+            const step = card.dataset.step;
+            const done = JSON.parse(localStorage.getItem('cmo_onboarding') || '{}');
+            done[step] = card.classList.contains('done');
+            localStorage.setItem('cmo_onboarding', JSON.stringify(done));
+        }
+
+        // Restore completed steps
+        const saved = JSON.parse(localStorage.getItem('cmo_onboarding') || '{}');
+        Object.entries(saved).forEach(([step, isDone]) => {
+            if (isDone) {
+                const card = document.querySelector(`[data-step="${step}"]`);
+                if (card) card.classList.add('done');
+            }
+        });
+
+        // Copy code to clipboard
+        function copyCode(event, btn) {
+            event.stopPropagation();
+            const pre = btn.parentElement;
+            const text = pre.textContent.replace('Copy', '').trim();
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 2000);
+            });
+        }
+    </script>
+</body>
+</html>
