@@ -243,6 +243,8 @@ class WorkspaceExtractor(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        workspace_id = request.headers.get("X-Workspace-Id")
-        request.state.workspace_id = workspace_id
+        # Only set from header if not already set by ApiKeyAuthMiddleware
+        if not getattr(request.state, "workspace_id", None):
+            workspace_id = request.headers.get("X-Workspace-Id")
+            request.state.workspace_id = workspace_id
         return await call_next(request)

@@ -22,7 +22,7 @@ async def embed_card(
     account_id: str,
     session: SessionDep,
     workspace_id: WorkspaceDep,
-    theme: str = Query("light", regex="^(light|dark)$"),
+    theme: str = Query("light", pattern="^(light|dark)$"),
 ) -> HTMLResponse:
     """Return a compact HTML card for CRM sidebar iframe embedding.
 

@@ -12,8 +12,8 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text, func, select, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, func, select, text, update
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.pool import NullPool
@@ -29,6 +29,7 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     poolclass=NullPool,
     echo=False,
+    connect_args={"prepared_statement_cache_size": 0},  # Required for PgBouncer transaction mode
 )
 
 async_session_factory = async_sessionmaker(
@@ -49,8 +50,8 @@ class Base(DeclarativeBase):
 class Campaign(Base):
     __tablename__ = "campaigns"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     icp_criteria: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     sequence_config: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -61,8 +62,8 @@ class Campaign(Base):
 class Account(Base):
     __tablename__ = "accounts"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     company_name: Mapped[str] = mapped_column(String, nullable=False)
     domain: Mapped[str | None] = mapped_column(String, nullable=True)
     metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True)
@@ -72,8 +73,8 @@ class Account(Base):
 class Contact(Base):
     __tablename__ = "contacts"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     email: Mapped[str] = mapped_column(String, nullable=False)
     first_name: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -85,8 +86,8 @@ class Contact(Base):
 class Message(Base):
     __tablename__ = "messages"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     contact_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     campaign_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     subject: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -100,7 +101,7 @@ class Message(Base):
 class WorkspaceSettings(Base):
     __tablename__ = "workspace_settings"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
     workspace_id: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     settings_data: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -109,8 +110,7 @@ class WorkspaceSettings(Base):
 
 class Workspace(Base):
     __tablename__ = "workspaces"
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id = None  # Not applicable — this IS the workspace
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
     name: Mapped[str] = mapped_column(String, nullable=False)
     plan: Mapped[str] = mapped_column(String, nullable=False, default="free")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -119,8 +119,8 @@ class Workspace(Base):
 
 class ApiKey(Base):
     __tablename__ = "api_keys"
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     key_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String, nullable=False, default="default")
     is_active: Mapped[bool] = mapped_column(default=True)
@@ -131,8 +131,8 @@ class ApiKey(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False, default="viewer")
@@ -144,8 +144,8 @@ class User(Base):
 class WorkspaceInvitation(Base):
     __tablename__ = "workspace_invitations"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     email: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False, default="viewer")
     invited_by: Mapped[str] = mapped_column(String, nullable=False)
@@ -583,8 +583,8 @@ async def list_invitations(
 class AccountScoreRecord(Base):
     __tablename__ = "account_scores"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     icp_fit_score: Mapped[int] = mapped_column(Integer, nullable=False)
     pain_fit_score: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -602,8 +602,8 @@ class AccountScoreRecord(Base):
 class SignalRecord(Base):
     __tablename__ = "signals"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     signal_type: Mapped[str] = mapped_column(String, nullable=False)
     source: Mapped[str] = mapped_column(String, nullable=False)
@@ -618,10 +618,10 @@ class SignalRecord(Base):
 
 
 class PainHypothesisRecord(Base):
-    __tablename__ = "pain_hypotheses"
+    __tablename__ = "pain_hypothesis_records"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     brief_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     pain_type: Mapped[str] = mapped_column(String, nullable=False)
@@ -634,10 +634,10 @@ class PainHypothesisRecord(Base):
 
 
 class SellerBriefRecord(Base):
-    __tablename__ = "seller_briefs"
+    __tablename__ = "seller_brief_records"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     brief_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
@@ -652,8 +652,8 @@ class SellerBriefRecord(Base):
 class FeedbackEventRecord(Base):
     __tablename__ = "feedback_events"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     recommendation_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     recommendation_type: Mapped[str] = mapped_column(String, nullable=False)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -666,8 +666,8 @@ class FeedbackEventRecord(Base):
 class OutcomeEventRecord(Base):
     __tablename__ = "outcome_events"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     opportunity_id: Mapped[str | None] = mapped_column(String, nullable=True)
     event_type: Mapped[str] = mapped_column(String, nullable=False)
@@ -678,8 +678,8 @@ class OutcomeEventRecord(Base):
 class NotificationRecord(Base):
     __tablename__ = "notifications"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
-    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
     notification_type: Mapped[str] = mapped_column(String, nullable=False)
     priority: Mapped[str] = mapped_column(String, nullable=False, default="medium")
     title: Mapped[str] = mapped_column(String, nullable=False)
