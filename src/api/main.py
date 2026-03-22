@@ -124,6 +124,10 @@ from src.api.onboarding import router as onboarding_router  # noqa: E402
 
 app.include_router(onboarding_router)
 
+from src.api.dashboard import router as dashboard_router  # noqa: E402
+
+app.include_router(dashboard_router)
+
 
 # ---------------------------------------------------------------------------
 # Structured error handlers
