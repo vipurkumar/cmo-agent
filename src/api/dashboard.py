@@ -1,35 +1,35 @@
-"""Customer dashboard — serves the SPA and page JS modules at /app."""
+"""Customer dashboard — serves the React SPA.
+
+In development: Run `npm run dev` in frontend/ (port 3001 with proxy to 8000).
+In production: Serves the built files from frontend/dist/.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import HTMLResponse
-from starlette.responses import Response
+from fastapi import APIRouter
+from fastapi.responses import FileResponse, HTMLResponse
+from starlette.staticfiles import StaticFiles
 
 router = APIRouter(tags=["dashboard"])
 
-_dashboard_path = Path(__file__).parent / "dashboard.html"
-_pages_dir = Path(__file__).parent / "pages"
+_frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
 
-@router.get("/app/pages/{filename}", include_in_schema=False)
-async def serve_page_js(filename: str):
-    """Serve page JS modules for the dashboard."""
-    if not filename.endswith(".js"):
-        raise HTTPException(status_code=404)
-    filepath = _pages_dir / filename
-    if not filepath.exists() or not filepath.is_file():
-        raise HTTPException(status_code=404)
-    return Response(
-        content=filepath.read_text(),
-        media_type="application/javascript",
+# Serve static assets (JS, CSS, images) from the build output
+if _frontend_dist.exists():
+    router.mount("/app/assets", StaticFiles(directory=_frontend_dist / "assets"), name="static-assets")
+
+
+@router.get("/app/{path:path}", include_in_schema=False)
+async def serve_spa(path: str = ""):
+    """Serve the React SPA. All routes return index.html for client-side routing."""
+    index = _frontend_dist / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return HTMLResponse(
+        content="<h1>Dashboard not built</h1>"
+        "<p>Run <code>cd frontend && npm run build</code> to build the React app.</p>",
+        status_code=200,
     )
-
-
-@router.get("/app", response_class=HTMLResponse)
-@router.get("/app/{path:path}", response_class=HTMLResponse)
-async def dashboard(path: str = ""):
-    """Serve the customer dashboard SPA."""
-    return HTMLResponse(content=_dashboard_path.read_text())

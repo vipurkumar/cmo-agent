@@ -32,7 +32,29 @@
       "Bash(curl:*)",
       "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent/src -name \"*.py\" -exec grep -l \"class.*Tool\\\\|def.*tool\" {})",
       "Bash(wc -l /home/rupivbluegreen/projects/fun_CMO_agent/tests/unit/*.py)",
-      "Bash(wc -l /home/rupivbluegreen/projects/fun_CMO_agent/src/agent/nodes/*.py /home/rupivbluegreen/projects/fun_CMO_agent/src/tools/*.py)"
+      "Bash(wc -l /home/rupivbluegreen/projects/fun_CMO_agent/src/agent/nodes/*.py /home/rupivbluegreen/projects/fun_CMO_agent/src/tools/*.py)",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent -name README* -o -name DOCS* -type f)",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent -type f \\\\\\(-name *.md -o -name *.txt \\\\\\))",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent/src -type f -name *.py -exec grep -l \"create.*workspace\\\\|POST.*workspace\\\\|signup\" {})",
+      "Bash(2)",
+      "Bash(wc -l /home/rupivbluegreen/projects/fun_CMO_agent/src/tools/*.py /home/rupivbluegreen/projects/fun_CMO_agent/src/agent/nodes/*.py)",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent -path *tests/integration* -name *.py)",
+      "Bash(grep -rn \"api_key\\\\|api-key\\\\|bearer\\\\|authentication\\\\|auth\" /home/rupivbluegreen/projects/fun_CMO_agent/src/api/*.py)",
+      "Bash(grep -rn \"email\\\\|notification\\\\|message\\\\|alert\" /home/rupivbluegreen/projects/fun_CMO_agent/src/api/*.py)",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent/helm -name *.yaml -o -name *.yml)",
+      "Bash(grep -r \"prometheus\\\\|Counter\\\\|Histogram\\\\|Gauge\" /home/rupivbluegreen/projects/fun_CMO_agent/src --include=*.py)",
+      "Bash(grep:*)",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent/infra -type f -name *.sql -o -name *.py)",
+      "Bash(uv --version)",
+      "Bash(docker --version)",
+      "Bash(fuser -k 8000/tcp)",
+      "Bash(npm install:*)",
+      "Bash(npx vite:*)",
+      "Bash(curl -s -X POST http://localhost:8000/auth/register -H \"Content-Type: application/json\" -d '{\"\"\"\"email\"\"\"\": \"\"\"\"jane@acme.com\"\"\"\", \"\"\"\"password\"\"\"\": \"\"\"\"secret123\"\"\"\", \"\"\"\"name\"\"\"\": \"\"\"\"Jane Doe\"\"\"\", \"\"\"\"company\"\"\"\": \"\"\"\"Acme Corp\"\"\"\"}')",
+      "Bash(curl -s -X POST http://localhost:8000/auth/login -H \"Content-Type: application/json\" -d '{\"\"\"\"email\"\"\"\": \"\"\"\"jane@acme.com\"\"\"\", \"\"\"\"password\"\"\"\": \"\"\"\"secret123\"\"\"\"}')",
+      "Bash(docker restart:*)",
+      "Bash(pkill -f \"uvicorn src.api.main\")",
+      "Bash(fuser:*)"
     ]
   }
 }

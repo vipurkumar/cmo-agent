@@ -124,8 +124,10 @@ from src.api.onboarding import router as onboarding_router  # noqa: E402
 
 app.include_router(onboarding_router)
 
+from src.api.auth import router as auth_router  # noqa: E402
 from src.api.dashboard import router as dashboard_router  # noqa: E402
 
+app.include_router(auth_router)
 app.include_router(dashboard_router)
 
 

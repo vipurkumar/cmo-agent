@@ -138,7 +138,7 @@ from src.db.queries import async_session_factory, get_api_key_by_hash, get_works
 
 # Paths that don't require API key auth
 _AUTH_EXEMPT_PATHS = frozenset({"/health", "/metrics", "/docs", "/openapi.json", "/redoc"})
-_AUTH_EXEMPT_PREFIXES = ("/webhooks/", "/demo", "/app", "/onboarding")
+_AUTH_EXEMPT_PREFIXES = ("/webhooks/", "/demo", "/app", "/onboarding", "/auth")
 
 
 class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
