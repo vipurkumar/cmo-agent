@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import time
-from collections import defaultdict
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -68,48 +66,65 @@ class HMACAuthMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-workspace in-memory rate limiting on API endpoints.
+    """Per-workspace Redis-backed rate limiting on API endpoints.
 
-    Uses a simple sliding-window counter. For distributed deployments,
-    replace with the Redis-backed RateLimiter from src/ratelimit/bucket.py.
+    Uses the token bucket RateLimiter from src/ratelimit/bucket.py for
+    distributed rate limiting across multiple replicas.
     """
 
-    def __init__(self, app, requests_per_minute: int = 60) -> None:  # type: ignore[no-untyped-def]
+    def __init__(self, app, requests_per_minute: int = 60) -> None:
         super().__init__(app)
-        self.requests_per_minute = requests_per_minute
-        self._buckets: dict[str, list[float]] = defaultdict(list)
+        self._redis = None
+        self._limiter = None
+
+    def _get_limiter(self):
+        if self._limiter is None:
+            from redis.asyncio import Redis as AsyncRedis
+            from src.ratelimit.bucket import RateLimiter
+            self._redis = AsyncRedis.from_url(settings.REDIS_URL, decode_responses=False)
+            self._limiter = RateLimiter(self._redis)
+        return self._limiter
 
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        workspace_id = request.headers.get("X-Workspace-Id")
-        if not workspace_id:
-            # Non-workspace endpoints (e.g. /health) are not rate-limited
+        # Get workspace_id from auth middleware (set by ApiKeyAuthMiddleware)
+        workspace_id = getattr(request.state, "workspace_id", None)
+        if not workspace_id or workspace_id == "__admin__":
             return await call_next(request)
 
-        now = time.time()
-        window_start = now - 60.0
+        plan = getattr(request.state, "workspace_plan", "free")
 
-        # Prune old entries
-        bucket = self._buckets[workspace_id]
-        self._buckets[workspace_id] = [t for t in bucket if t > window_start]
-        bucket = self._buckets[workspace_id]
+        try:
+            limiter = self._get_limiter()
+            await limiter.enforce(workspace_id, "api", plan)
+        except Exception as exc:
+            if hasattr(exc, "retry_after"):
+                from src.ratelimit.bucket import RATE_LIMITS
+                max_tokens = RATE_LIMITS["api"].get(plan, (60, 60))[0]
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error_code": "RATE_LIMIT_EXCEEDED",
+                        "message": f"Rate limit exceeded. Retry after {exc.retry_after}s.",
+                    },
+                    headers={
+                        "Retry-After": str(exc.retry_after),
+                        "X-RateLimit-Limit": str(max_tokens),
+                        "X-RateLimit-Remaining": "0",
+                    },
+                )
+            # Redis unavailable — fail open (allow request but log)
+            log.warning("ratelimit.redis_unavailable", error=str(exc))
 
-        if len(bucket) >= self.requests_per_minute:
-            retry_after = int(bucket[0] - window_start) + 1
-            log.warning(
-                "ratelimit.api_exceeded",
-                workspace_id=workspace_id,
-                path=request.url.path,
-            )
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded"},
-                headers={"Retry-After": str(retry_after)},
-            )
-
-        bucket.append(now)
-        return await call_next(request)
+        # Add rate limit headers to successful responses
+        response = await call_next(request)
+        # We can't easily get remaining tokens here without another Redis call,
+        # so we only add the limit header
+        from src.ratelimit.bucket import RATE_LIMITS
+        max_tokens = RATE_LIMITS["api"].get(plan, (60, 60))[0]
+        response.headers["X-RateLimit-Limit"] = str(max_tokens)
+        return response
 
 
 # ---------------------------------------------------------------------------

@@ -100,6 +100,16 @@ from src.api.export import router as export_router  # noqa: E402
 app.include_router(embed_router)
 app.include_router(export_router)
 
+from src.api.kb import router as kb_router  # noqa: E402
+from src.api.audit import router as audit_router  # noqa: E402
+
+app.include_router(kb_router)
+app.include_router(audit_router)
+
+from src.api.notifications import router as notifications_router  # noqa: E402
+
+app.include_router(notifications_router)
+
 
 # ---------------------------------------------------------------------------
 # Structured error handlers

@@ -120,7 +120,81 @@ uv run uvicorn src.api.main:app --reload
 
 # Start the worker (separate terminal)
 uv run python -m src.worker.runner
+
+# Create your first workspace (set CMO_ADMIN_API_KEY in .env first)
+curl -X POST http://localhost:8000/api/v1/workspaces \
+  -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Company", "plan": "pro"}'
+
+# Use the returned API key for all subsequent requests
+export CMO_API_KEY=cmo_returned_key_here
 ```
+
+---
+
+## Authentication
+
+CMO Agent uses API keys for authentication. Every request (except health, docs, and webhooks) requires a valid API key.
+
+### Getting Started
+
+1. **Create a workspace** (requires admin API key):
+```bash
+curl -X POST http://localhost:8000/api/v1/workspaces \
+  -H "Authorization: Bearer YOUR_ADMIN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Company", "plan": "pro"}'
+```
+
+Response:
+```json
+{
+  "workspace_id": "uuid-here",
+  "name": "My Company",
+  "plan": "pro",
+  "api_key": "cmo_abc123..."
+}
+```
+
+2. **Use the API key** on all subsequent requests:
+```bash
+curl http://localhost:8000/campaigns \
+  -H "Authorization: Bearer cmo_abc123..."
+```
+
+3. **Create additional API keys**:
+```bash
+curl -X POST http://localhost:8000/api/v1/workspaces/{workspace_id}/api-keys \
+  -H "Authorization: Bearer cmo_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"name": "CI/CD Key"}'
+```
+
+### Plans & Rate Limits
+
+| Plan | API Rate Limit | Apollo | Claude |
+|------|---------------|--------|--------|
+| Free | 60 req/min | 10 req/min | 15 req/min |
+| Pro | 300 req/min | 100 req/min | 150 req/min |
+| Enterprise | 1,000 req/min | 500 req/min | 600 req/min |
+
+Rate limit headers are returned on every response:
+- `X-RateLimit-Limit` — max requests per window
+- `Retry-After` — seconds until rate limit resets (on 429)
+
+### Error Responses
+
+All errors follow a structured format:
+```json
+{
+  "error_code": "AUTH_INVALID_KEY",
+  "message": "Invalid or deactivated API key.",
+  "request_id": "uuid-here"
+}
+```
+
+Common error codes: `AUTH_MISSING_KEY`, `AUTH_INVALID_KEY`, `NOT_FOUND`, `RATE_LIMIT_EXCEEDED`, `VALIDATION_ERROR`, `INTERNAL_ERROR`.
 
 ---
 
@@ -191,6 +265,73 @@ uv run python -m src.worker.runner
 | `GET` | `/demo` | Demo UI (demo mode only) |
 | `POST` | `/demo/run` | Run demo agent loop |
 | `POST` | `/demo/qualify` | Run demo qualification |
+
+### Knowledge Base
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/kb/upload` | Upload a KB entry (battlecard, case study, etc.) |
+| `POST` | `/api/v1/kb/reload` | Reload static KB files into pgvector |
+| `GET` | `/api/v1/kb/search?query=...` | Semantic search over knowledge base |
+
+### Audit
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/audit/activity` | Recent workspace activity log |
+| `GET` | `/api/v1/audit/summary` | High-level workspace summary |
+
+### Export
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/export/briefs?format=json\|csv` | Export seller briefs |
+| `GET` | `/api/v1/export/scores?format=json\|csv` | Export account scores |
+
+### Usage
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/usage?days=30` | LLM usage and cost breakdown |
+
+---
+
+## Webhook Format
+
+CMO Agent receives webhooks from n8n for approval responses and reply notifications.
+
+### Authentication
+All webhook requests must include an `X-Webhook-Signature` header with an HMAC-SHA256 signature of the request body using `CMO_HMAC_SECRET`.
+
+```python
+import hashlib, hmac
+signature = hmac.new(HMAC_SECRET.encode(), body, hashlib.sha256).hexdigest()
+```
+
+### Payload Format
+
+```json
+{
+  "event_type": "approval_response",
+  "workspace_id": "ws-uuid",
+  "payload": {
+    "thread_id": "thread-uuid",
+    "approved": true,
+    "reviewer": "jane@acme.com"
+  },
+  "timestamp": "2026-03-22T10:00:00Z"
+}
+```
+
+### Event Types
+
+| Event Type | Queue | Description |
+|------------|-------|-------------|
+| `approval_response` | critical | Email draft approved/rejected |
+| `positive_reply` | critical | Prospect replied positively |
+| `unsubscribe_request` | critical | Unsubscribe request received |
+| `brief_approval` | critical | Seller brief approved/rejected |
+| `manual_trigger` | interactive | User-triggered campaign run |
 
 ---
 
@@ -416,6 +557,7 @@ All variables use the `CMO_` prefix. See [`.env.example`](.env.example) for the 
 - `CMO_DATABASE_URL` — PostgreSQL connection (via PgBouncer)
 - `CMO_REDIS_URL` — Redis connection
 - `CMO_HMAC_SECRET` — Webhook authentication
+- `CMO_ADMIN_API_KEY` — Admin key for workspace provisioning
 
 **Optional integrations:**
 - `CMO_APOLLO_API_KEY` — Apollo.io enrichment
