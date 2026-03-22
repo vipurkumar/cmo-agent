@@ -1,0 +1,50 @@
+groups:
+  - name: cmo-agent-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(cmo_http_requests_total{status_code=~"5.."}[5m])) / sum(rate(cmo_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate ({{ $value | humanizePercentage }})"
+
+      - alert: HighLLMCost
+        expr: sum(rate(cmo_llm_cost_usd_total[1h])) * 3600 > 10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM cost exceeding $10/hour (current: ${{ $value | humanize }})"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, sum(rate(cmo_http_request_duration_seconds_bucket[5m])) by (le)) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency above 5s (current: {{ $value | humanize }}s)"
+
+      - alert: JobFailureRate
+        expr: sum(rate(cmo_jobs_total{status="failed"}[15m])) / sum(rate(cmo_jobs_total[15m])) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Job failure rate above 10% ({{ $value | humanizePercentage }})"
+
+      - alert: RateLimitStorm
+        expr: sum(rate(cmo_rate_limit_hits_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate limit rejection rate ({{ $value }}/s)"
+
+      - alert: AuthFailureSpike
+        expr: sum(rate(cmo_auth_failures_total[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Auth failure spike ({{ $value }}/s) - possible credential scanning"

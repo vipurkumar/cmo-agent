@@ -1,0 +1,55 @@
+{{- if .Values.monitoring.alerts.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "omnigtm.fullname" . }}
+  labels:
+    {{- include "omnigtm.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: cmo-agent.rules
+      rules:
+        - alert: CMOHighErrorRate
+          expr: >
+            sum(rate(cmo_http_requests_total{status_code=~"5.."}[5m]))
+            / sum(rate(cmo_http_requests_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            service: cmo-agent
+          annotations:
+            summary: "CMO Agent 5xx error rate above 5%"
+            description: "Error rate is {{ "{{" }} $value | humanizePercentage {{ "}}" }}"
+
+        - alert: CMOHighLLMCost
+          expr: sum(rate(cmo_llm_cost_usd_total[1h])) * 3600 > {{ .Values.monitoring.alerts.llmCostThresholdPerHour | default 10 }}
+          for: 15m
+          labels:
+            severity: warning
+            service: cmo-agent
+          annotations:
+            summary: "LLM cost exceeding ${{ .Values.monitoring.alerts.llmCostThresholdPerHour | default 10 }}/hour"
+
+        - alert: CMOHighLatency
+          expr: >
+            histogram_quantile(0.95,
+              sum(rate(cmo_http_request_duration_seconds_bucket[5m])) by (le)
+            ) > {{ .Values.monitoring.alerts.latencyP95Threshold | default 5 }}
+          for: 5m
+          labels:
+            severity: warning
+            service: cmo-agent
+          annotations:
+            summary: "API p95 latency above {{ .Values.monitoring.alerts.latencyP95Threshold | default 5 }}s"
+
+        - alert: CMOJobFailures
+          expr: >
+            sum(rate(cmo_jobs_total{status="failed"}[15m]))
+            / sum(rate(cmo_jobs_total[15m])) > 0.1
+          for: 10m
+          labels:
+            severity: critical
+            service: cmo-agent
+          annotations:
+            summary: "Job failure rate above 10%"
+{{- end }}

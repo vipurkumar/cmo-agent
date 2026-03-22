@@ -81,6 +81,8 @@ app.add_middleware(
 )
 
 # Middleware — order matters: outermost first
+from src.observability.middleware import PrometheusMiddleware  # noqa: E402
+app.add_middleware(PrometheusMiddleware)
 app.add_middleware(WorkspaceExtractor)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
 app.add_middleware(ApiKeyAuthMiddleware)
@@ -117,6 +119,10 @@ app.include_router(users_router)
 from src.api.webhooks_mgmt import router as webhooks_mgmt_router  # noqa: E402
 
 app.include_router(webhooks_mgmt_router)
+
+from src.api.onboarding import router as onboarding_router  # noqa: E402
+
+app.include_router(onboarding_router)
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +187,17 @@ async def generic_exception_handler(request: Request, exc: Exception):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics_endpoint():
+    """Prometheus metrics endpoint."""
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from starlette.responses import Response as StarletteResponse
+    return StarletteResponse(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 
 @app.get("/health")

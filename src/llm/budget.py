@@ -5,10 +5,13 @@ NEVER call anthropic.messages.create() outside of this module.
 
 from __future__ import annotations
 
+import time
+
 import anthropic
 
 from src.config import settings
 from src.logger import log
+from src.observability.metrics import LLM_CALLS_TOTAL, LLM_TOKENS_TOTAL, LLM_COST_USD, LLM_CALL_DURATION
 
 # ---------------------------------------------------------------------------
 # Token budgets per task (max_tokens sent to the API)
@@ -111,12 +114,15 @@ async def call_claude(
 
     client = _get_client()
 
+    _call_start = time.monotonic()
     response = await client.messages.create(
         model=resolved_model,
         max_tokens=resolved_max_tokens,
         system=system,
         messages=[{"role": "user", "content": user}],
     )
+
+    _call_duration = time.monotonic() - _call_start
 
     input_tokens = response.usage.input_tokens
     output_tokens = response.usage.output_tokens
@@ -131,6 +137,13 @@ async def call_claude(
         cost_usd=round(cost, 6),
         workspace_id=workspace_id,
     )
+
+    # Prometheus metrics
+    LLM_CALLS_TOTAL.labels(task=task, model=resolved_model, workspace_id=workspace_id).inc()
+    LLM_TOKENS_TOTAL.labels(direction="input", model=resolved_model, workspace_id=workspace_id).inc(input_tokens)
+    LLM_TOKENS_TOTAL.labels(direction="output", model=resolved_model, workspace_id=workspace_id).inc(output_tokens)
+    LLM_COST_USD.labels(task=task, model=resolved_model, workspace_id=workspace_id).inc(cost)
+    LLM_CALL_DURATION.labels(task=task, model=resolved_model).observe(_call_duration)
 
     # Extract text from the first content block
     text: str = response.content[0].text

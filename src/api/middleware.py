@@ -137,7 +137,7 @@ import uuid as _uuid
 from src.db.queries import async_session_factory, get_api_key_by_hash, get_workspace, update_api_key_last_used
 
 # Paths that don't require API key auth
-_AUTH_EXEMPT_PATHS = frozenset({"/health", "/docs", "/openapi.json", "/redoc"})
+_AUTH_EXEMPT_PATHS = frozenset({"/health", "/metrics", "/docs", "/openapi.json", "/redoc"})
 _AUTH_EXEMPT_PREFIXES = ("/webhooks/", "/demo")
 
 

@@ -20,6 +20,7 @@ from redis.asyncio import Redis
 
 from src.config import settings
 from src.logger import log
+from src.observability.metrics import JOBS_TOTAL, JOB_DURATION, JOBS_IN_PROGRESS
 from src.worker.locks import ThreadLockError, thread_lock
 from src.worker.queues import QUEUE_CONFIG
 
@@ -61,11 +62,13 @@ async def _process_job(job: Job, token: str) -> Any:
     payload: dict[str, Any] = data.get("payload", {})
     thread_id: str | None = payload.get("thread_id")
 
+    queue_name: str = job.queueName if hasattr(job, "queueName") else "unknown"
+
     log_ctx = {
         "job_id": job.id,
         "job_type": job_type,
         "workspace_id": workspace_id,
-        "queue": job.queueName if hasattr(job, "queueName") else "unknown",
+        "queue": queue_name,
     }
 
     log.info("job.start", **log_ctx)
@@ -76,6 +79,7 @@ async def _process_job(job: Job, token: str) -> Any:
         log.error("job.no_handler", **log_ctx)
         raise ValueError(f"No handler registered for job_type '{job_type}'")
 
+    JOBS_IN_PROGRESS.labels(queue=queue_name).inc()
     try:
         # If the payload includes a thread_id we must acquire the distributed
         # lock before resuming a LangGraph thread (Architecture Rule #6).
@@ -91,18 +95,26 @@ async def _process_job(job: Job, token: str) -> Any:
 
         elapsed_ms = round((time.monotonic() - start) * 1000, 1)
         log.info("job.complete", elapsed_ms=elapsed_ms, **log_ctx)
+        JOBS_TOTAL.labels(job_type=job_type, queue=queue_name, status="complete").inc()
+        JOB_DURATION.labels(job_type=job_type, queue=queue_name).observe(elapsed_ms / 1000)
         return result
 
     except ThreadLockError:
         # Another worker is already processing this thread — let BullMQ
         # retry via its built-in mechanism.
         log.warning("job.lock_conflict", thread_id=thread_id, **log_ctx)
+        JOBS_TOTAL.labels(job_type=job_type, queue=queue_name, status="failed").inc()
         raise
 
     except Exception:
         elapsed_ms = round((time.monotonic() - start) * 1000, 1)
         log.exception("job.failed", elapsed_ms=elapsed_ms, **log_ctx)
+        JOBS_TOTAL.labels(job_type=job_type, queue=queue_name, status="failed").inc()
+        JOB_DURATION.labels(job_type=job_type, queue=queue_name).observe(elapsed_ms / 1000)
         raise
+
+    finally:
+        JOBS_IN_PROGRESS.labels(queue=queue_name).dec()
 
 
 # ---------------------------------------------------------------------------

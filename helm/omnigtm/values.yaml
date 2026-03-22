@@ -84,3 +84,13 @@ ingress:
 serviceAccount:
   create: true
   name: "omnigtm"
+
+monitoring:
+  enabled: false
+  interval: "15s"
+  scrapeTimeout: "10s"
+  labels: {}
+  alerts:
+    enabled: false
+    llmCostThresholdPerHour: 10
+    latencyP95Threshold: 5
