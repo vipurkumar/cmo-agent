@@ -10,6 +10,19 @@ CREATE TABLE IF NOT EXISTS workspaces (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- API Keys
+CREATE TABLE IF NOT EXISTS api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id),
+    key_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT 'default',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_keys_ws ON api_keys(workspace_id);
+
 -- Workspace settings
 CREATE TABLE IF NOT EXISTS workspace_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -5,17 +5,24 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse as StarletteJSONResponse
 
 from src.api.deps import SessionDep, WorkspaceDep
-from src.api.middleware import HMACAuthMiddleware, RateLimitMiddleware, WorkspaceExtractor
+from src.api.middleware import ApiKeyAuthMiddleware, HMACAuthMiddleware, RateLimitMiddleware, RequestIdMiddleware, WorkspaceExtractor
 from src.api.schemas import (
     ApprovalResponse,
     AutomationPauseRequest,
     AutomationStatusResponse,
     BriefGenerateRequest,
     CampaignDetailResponse,
+    CreateApiKeyRequest,
+    CreateApiKeyResponse,
     CreateCampaignRequest,
     CreateCampaignResponse,
+    CreateWorkspaceRequest,
+    CreateWorkspaceResponse,
     FeedbackRequest,
     FeedbackResponse,
     HealthResponse,
@@ -25,9 +32,14 @@ from src.api.schemas import (
     WebhookPayload,
 )
 from src.db.queries import (
+    async_session_factory,
+    create_api_key,
     create_campaign,
+    create_workspace,
+    deactivate_api_key,
     get_campaign,
     get_seller_brief,
+    get_workspace,
     list_campaigns,
     save_feedback_event,
 )
@@ -39,12 +51,41 @@ from src.worker.queues import enqueue, enqueue_by_event
 # App factory
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="CMO Agent API", version="0.1.0")
+app = FastAPI(
+    title="CMO Agent API",
+    version="0.1.0",
+    description="AI-powered GTM execution platform for B2B companies.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_tags=[
+        {"name": "workspaces", "description": "Workspace and API key management"},
+        {"name": "campaigns", "description": "Campaign management"},
+        {"name": "qualification", "description": "Account qualification and scoring"},
+        {"name": "automation", "description": "Automation control"},
+        {"name": "embed", "description": "CRM-embeddable endpoints"},
+        {"name": "export", "description": "Data export (JSON/CSV)"},
+        {"name": "usage", "description": "Usage and cost tracking"},
+        {"name": "webhooks", "description": "Webhook receivers"},
+        {"name": "admin", "description": "Configuration and admin"},
+    ],
+)
+
+# CORS — permissive for feedback release, tighten for GA
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-Id", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"],
+)
 
 # Middleware — order matters: outermost first
 app.add_middleware(WorkspaceExtractor)
 app.add_middleware(RateLimitMiddleware, requests_per_minute=60)
+app.add_middleware(ApiKeyAuthMiddleware)
 app.add_middleware(HMACAuthMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 # Include sub-routers
 from src.admin.router import router as admin_router  # noqa: E402
@@ -54,8 +95,69 @@ app.include_router(admin_router)
 app.include_router(report_router)
 
 from src.api.embed import router as embed_router  # noqa: E402
+from src.api.export import router as export_router  # noqa: E402
 
 app.include_router(embed_router)
+app.include_router(export_router)
+
+
+# ---------------------------------------------------------------------------
+# Structured error handlers
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Return structured error responses for all HTTP exceptions."""
+    error_codes = {
+        400: "BAD_REQUEST",
+        401: "AUTH_REQUIRED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        409: "CONFLICT",
+        422: "VALIDATION_ERROR",
+        429: "RATE_LIMIT_EXCEEDED",
+    }
+    request_id = getattr(request.state, "request_id", None)
+    return StarletteJSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error_code": error_codes.get(exc.status_code, "ERROR"),
+            "message": exc.detail,
+            "request_id": request_id,
+        },
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return structured validation errors with field details."""
+    request_id = getattr(request.state, "request_id", None)
+    return StarletteJSONResponse(
+        status_code=422,
+        content={
+            "error_code": "VALIDATION_ERROR",
+            "message": "Request validation failed",
+            "details": {"errors": exc.errors()},
+            "request_id": request_id,
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Catch-all for unhandled exceptions — no stack trace in response."""
+    request_id = getattr(request.state, "request_id", None)
+    log.exception("unhandled_error", request_id=request_id, path=request.url.path)
+    return StarletteJSONResponse(
+        status_code=500,
+        content={
+            "error_code": "INTERNAL_ERROR",
+            "message": "An unexpected error occurred.",
+            "request_id": request_id,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -63,17 +165,113 @@ app.include_router(embed_router)
 # ---------------------------------------------------------------------------
 
 
-@app.get("/health", response_model=HealthResponse)
-async def health():
-    """Health check endpoint."""
-    return HealthResponse(
-        status="ok",
-        version="0.1.0",
-        timestamp=datetime.now(UTC),
+@app.get("/health")
+async def health(request: Request):
+    """Health check — verifies DB, Redis, and ClickHouse connectivity."""
+    import asyncio
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    services: dict[str, str] = {}
+    status = "ok"
+
+    # Check PostgreSQL via PgBouncer
+    try:
+        async with async_session_factory() as session:
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
+        services["database"] = "ok"
+    except Exception as exc:
+        services["database"] = f"down: {type(exc).__name__}"
+        status = "degraded"
+
+    # Check Redis
+    try:
+        redis = AsyncRedis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            await redis.ping()
+            services["redis"] = "ok"
+        finally:
+            await redis.aclose()
+    except Exception as exc:
+        services["redis"] = f"down: {type(exc).__name__}"
+        status = "degraded"
+
+    # Check ClickHouse (best-effort, non-critical)
+    try:
+        from clickhouse_driver import Client as SyncCH
+        ch = SyncCH.from_url(settings.CLICKHOUSE_URL)
+        await asyncio.to_thread(ch.execute, "SELECT 1")
+        services["clickhouse"] = "ok"
+    except Exception:
+        services["clickhouse"] = "unavailable"
+
+    http_status = 200 if services.get("database") == "ok" and services.get("redis") == "ok" else 503
+    return StarletteJSONResponse(
+        status_code=http_status,
+        content={
+            "status": status,
+            "version": "0.1.0",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "services": services,
+        },
     )
 
 
-@app.post("/campaigns", response_model=CreateCampaignResponse, status_code=201)
+@app.post("/api/v1/workspaces", status_code=201, tags=["workspaces"])
+async def create_workspace_route(
+    body: CreateWorkspaceRequest,
+    session: SessionDep,
+):
+    """Create a new workspace and its first API key. Requires admin API key."""
+    workspace = await create_workspace(session=session, name=body.name, plan=body.plan)
+    api_key_record, raw_key = await create_api_key(session=session, workspace_id=workspace.id)
+    return CreateWorkspaceResponse(
+        workspace_id=workspace.id,
+        name=workspace.name,
+        plan=workspace.plan,
+        api_key=raw_key,
+    )
+
+
+@app.post("/api/v1/workspaces/{workspace_id}/api-keys", status_code=201, tags=["workspaces"])
+async def create_api_key_route(
+    workspace_id: str,
+    body: CreateApiKeyRequest,
+    session: SessionDep,
+    ws_id: WorkspaceDep,
+):
+    """Create an additional API key for a workspace."""
+    if ws_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Cannot create keys for other workspaces")
+    workspace = await get_workspace(session=session, workspace_id=workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    api_key_record, raw_key = await create_api_key(session=session, workspace_id=workspace_id, name=body.name)
+    return CreateApiKeyResponse(
+        key_id=api_key_record.id,
+        api_key=raw_key,
+        name=api_key_record.name,
+    )
+
+
+@app.delete("/api/v1/workspaces/{workspace_id}/api-keys/{key_id}", tags=["workspaces"])
+async def delete_api_key_route(
+    workspace_id: str,
+    key_id: str,
+    session: SessionDep,
+    ws_id: WorkspaceDep,
+):
+    """Deactivate an API key."""
+    if ws_id != workspace_id:
+        raise HTTPException(status_code=403, detail="Cannot manage keys for other workspaces")
+    success = await deactivate_api_key(session=session, key_id=key_id, workspace_id=workspace_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"status": "deactivated"}
+
+
+@app.post("/campaigns", response_model=CreateCampaignResponse, status_code=201, tags=["campaigns"])
 async def create_campaign_route(
     body: CreateCampaignRequest,
     session: SessionDep,
@@ -96,23 +294,37 @@ async def create_campaign_route(
     )
 
 
-@app.get("/campaigns", response_model=list[CreateCampaignResponse])
+@app.get("/campaigns", tags=["campaigns"])
 async def list_campaigns_route(
     session: SessionDep,
     workspace_id: WorkspaceDep,
+    page: int = 1,
+    page_size: int = 20,
 ):
-    """List all campaigns for the workspace."""
+    """List campaigns for the workspace with pagination."""
     log.info("api.list_campaigns", workspace_id=workspace_id)
-    campaigns = await list_campaigns(session=session, workspace_id=workspace_id)
-    return [
-        CreateCampaignResponse(
-            id=c.id,
-            name=c.name,
-            status="draft",
-            created_at=c.created_at,
-        )
-        for c in campaigns
-    ]
+    page = max(1, page)
+    page_size = max(1, min(100, page_size))
+    offset = (page - 1) * page_size
+    campaigns, total = await list_campaigns(
+        session=session, workspace_id=workspace_id, offset=offset, limit=page_size
+    )
+    import math
+    return {
+        "items": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "status": "draft",
+                "created_at": c.created_at,
+            }
+            for c in campaigns
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": math.ceil(total / page_size) if page_size > 0 else 0,
+    }
 
 
 @app.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)

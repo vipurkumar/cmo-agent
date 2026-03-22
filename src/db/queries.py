@@ -6,6 +6,8 @@ a workspace_id filter for tenant isolation.
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
@@ -105,6 +107,27 @@ class WorkspaceSettings(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class Workspace(Base):
+    __tablename__ = "workspaces"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    workspace_id = None  # Not applicable — this IS the workspace
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    plan: Mapped[str] = mapped_column(String, nullable=False, default="free")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    key_hash: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, default="default")
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+
+
 # ---------------------------------------------------------------------------
 # Query functions — workspace_id is MANDATORY on every query
 # ---------------------------------------------------------------------------
@@ -148,15 +171,23 @@ async def create_campaign(
 async def list_campaigns(
     session: AsyncSession,
     workspace_id: str,
-) -> Sequence[Campaign]:
-    """List all campaigns for a workspace."""
-    log.debug("db.list_campaigns", workspace_id=workspace_id)
+    offset: int = 0,
+    limit: int = 20,
+) -> tuple[Sequence[Campaign], int]:
+    """List campaigns for a workspace with pagination. Returns (items, total)."""
+    log.debug("db.list_campaigns", workspace_id=workspace_id, offset=offset, limit=limit)
+    count_result = await session.execute(
+        select(func.count(Campaign.id)).where(Campaign.workspace_id == workspace_id)
+    )
+    total = count_result.scalar() or 0
     result = await session.execute(
         select(Campaign)
         .where(Campaign.workspace_id == workspace_id)
         .order_by(Campaign.created_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
-    return result.scalars().all()
+    return result.scalars().all(), total
 
 
 async def get_account(
@@ -297,6 +328,96 @@ async def get_workspace_settings(
         .where(WorkspaceSettings.workspace_id == workspace_id)
     )
     return result.scalar_one_or_none()
+
+
+def _generate_api_key() -> tuple[str, str]:
+    """Generate a raw API key and its SHA-256 hash. Returns (raw_key, key_hash)."""
+    raw_key = f"cmo_{secrets.token_urlsafe(32)}"
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    return raw_key, key_hash
+
+
+async def create_workspace(
+    session: AsyncSession,
+    name: str,
+    plan: str = "free",
+) -> Workspace:
+    """Create a new workspace."""
+    log.info("db.create_workspace", name=name, plan=plan)
+    workspace = Workspace(name=name, plan=plan)
+    session.add(workspace)
+    await session.flush()
+    return workspace
+
+
+async def get_workspace(
+    session: AsyncSession,
+    workspace_id: str,
+) -> Workspace | None:
+    """Fetch a workspace by ID."""
+    result = await session.execute(
+        select(Workspace).where(Workspace.id == workspace_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_api_key(
+    session: AsyncSession,
+    workspace_id: str,
+    name: str = "default",
+) -> tuple[ApiKey, str]:
+    """Create an API key for a workspace. Returns (record, raw_key)."""
+    log.info("db.create_api_key", workspace_id=workspace_id, name=name)
+    raw_key, key_hash = _generate_api_key()
+    api_key = ApiKey(
+        workspace_id=workspace_id,
+        key_hash=key_hash,
+        name=name,
+    )
+    session.add(api_key)
+    await session.flush()
+    return api_key, raw_key
+
+
+async def get_api_key_by_hash(
+    session: AsyncSession,
+    key_hash: str,
+) -> ApiKey | None:
+    """Look up an API key by its hash."""
+    result = await session.execute(
+        select(ApiKey)
+        .where(ApiKey.key_hash == key_hash)
+        .where(ApiKey.is_active == True)  # noqa: E712
+    )
+    return result.scalar_one_or_none()
+
+
+async def deactivate_api_key(
+    session: AsyncSession,
+    key_id: str,
+    workspace_id: str,
+) -> bool:
+    """Deactivate an API key. Returns True if found and deactivated."""
+    result = await session.execute(
+        update(ApiKey)
+        .where(ApiKey.id == key_id)
+        .where(ApiKey.workspace_id == workspace_id)
+        .values(is_active=False)
+    )
+    await session.flush()
+    return result.rowcount > 0
+
+
+async def update_api_key_last_used(
+    session: AsyncSession,
+    key_id: str,
+) -> None:
+    """Update the last_used_at timestamp for an API key."""
+    await session.execute(
+        update(ApiKey)
+        .where(ApiKey.id == key_id)
+        .values(last_used_at=func.now())
+    )
 
 
 # ---------------------------------------------------------------------------

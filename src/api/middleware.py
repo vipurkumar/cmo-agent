@@ -113,6 +113,109 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 # ---------------------------------------------------------------------------
+# API Key Auth Middleware
+# ---------------------------------------------------------------------------
+
+import hashlib as _hashlib
+import uuid as _uuid
+
+from src.db.queries import async_session_factory, get_api_key_by_hash, get_workspace, update_api_key_last_used
+
+# Paths that don't require API key auth
+_AUTH_EXEMPT_PATHS = frozenset({"/health", "/docs", "/openapi.json", "/redoc"})
+_AUTH_EXEMPT_PREFIXES = ("/webhooks/", "/demo")
+
+
+class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
+    """Validates Bearer API key on all non-exempt endpoints.
+
+    Sets request.state.workspace_id and request.state.workspace_plan.
+    """
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        path = request.url.path
+
+        # Skip auth for exempt paths
+        if path in _AUTH_EXEMPT_PATHS or any(path.startswith(p) for p in _AUTH_EXEMPT_PREFIXES):
+            return await call_next(request)
+
+        # Check for admin key on workspace creation
+        if path == "/api/v1/workspaces" and request.method == "POST":
+            admin_key = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            if admin_key and admin_key == settings.ADMIN_API_KEY:
+                request.state.workspace_id = "__admin__"
+                request.state.workspace_plan = "enterprise"
+                return await call_next(request)
+
+        # Extract Bearer token
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer cmo_"):
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error_code": "AUTH_MISSING_KEY",
+                    "message": "Missing or invalid API key. Use Authorization: Bearer cmo_...",
+                },
+            )
+
+        raw_key = auth_header.removeprefix("Bearer ").strip()
+        key_hash = _hashlib.sha256(raw_key.encode()).hexdigest()
+
+        # Look up in DB
+        try:
+            async with async_session_factory() as session:
+                api_key = await get_api_key_by_hash(session, key_hash)
+                if not api_key:
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            "error_code": "AUTH_INVALID_KEY",
+                            "message": "Invalid or deactivated API key.",
+                        },
+                    )
+
+                workspace = await get_workspace(session, api_key.workspace_id)
+                plan = workspace.plan if workspace else "free"
+
+                # Update last_used_at (fire-and-forget, don't block the request)
+                await update_api_key_last_used(session, api_key.id)
+                await session.commit()
+        except Exception as exc:
+            log.error("auth.db_error", error=str(exc))
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error_code": "AUTH_SERVICE_UNAVAILABLE",
+                    "message": "Authentication service temporarily unavailable.",
+                },
+            )
+
+        request.state.workspace_id = api_key.workspace_id
+        request.state.workspace_plan = plan
+        return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Request ID Middleware
+# ---------------------------------------------------------------------------
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Generates a unique request ID for every request."""
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        request_id = str(_uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = request_id
+        return response
+
+
+# ---------------------------------------------------------------------------
 # Workspace Extractor Middleware
 # ---------------------------------------------------------------------------
 

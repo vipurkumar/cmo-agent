@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # Demo mode — runs full agent loop with mock tools, no external deps
     DEMO_MODE: bool = False
 
+    # Admin API key for workspace provisioning
+    ADMIN_API_KEY: str = ""
+
+    # CORS
+    CORS_ALLOWED_ORIGINS: list[str] = ["*"]
+
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000

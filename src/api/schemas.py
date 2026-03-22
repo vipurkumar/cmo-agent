@@ -259,6 +259,38 @@ class FeedbackResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Workspace & Auth schemas
+# ---------------------------------------------------------------------------
+
+
+class CreateWorkspaceRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    plan: str = Field("free", pattern="^(free|pro|enterprise)$")
+
+
+class CreateWorkspaceResponse(BaseModel):
+    workspace_id: str
+    name: str
+    plan: str
+    api_key: str  # Raw key, shown once
+
+
+class CreateApiKeyRequest(BaseModel):
+    name: str = Field("default", min_length=1, max_length=100)
+
+
+class CreateApiKeyResponse(BaseModel):
+    key_id: str
+    api_key: str  # Raw key, shown once
+    name: str
+
+
+# ---------------------------------------------------------------------------
+# Automation control schemas
+# ---------------------------------------------------------------------------
+
+
 class AutomationPauseRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500)
 
@@ -273,3 +305,28 @@ class AutomationStatusResponse(BaseModel):
     weekly_remaining: int = 0
     daily_used: int = 0
     weekly_used: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Error response schema
+# ---------------------------------------------------------------------------
+
+
+class ErrorResponse(BaseModel):
+    error_code: str
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+    request_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Pagination
+# ---------------------------------------------------------------------------
+
+
+class PaginatedResponse(BaseModel):
+    items: list[Any]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

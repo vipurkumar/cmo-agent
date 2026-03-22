@@ -119,6 +119,81 @@ async def _query_campaign_cost(
 # ---------------------------------------------------------------------------
 
 
+async def get_usage_stats(
+    workspace_id: str,
+    days: int = 30,
+) -> dict:
+    """Query ClickHouse for LLM usage stats grouped by day."""
+    ch = _get_ch_client()
+
+    query = """
+        SELECT
+            toDate(created_at) AS date,
+            sum(cost_usd) AS cost_usd,
+            count() AS api_calls,
+            sum(input_tokens) AS input_tokens,
+            sum(output_tokens) AS output_tokens
+        FROM cost_events
+        WHERE workspace_id = %(workspace_id)s
+          AND created_at >= now() - INTERVAL %(days)s DAY
+        GROUP BY date
+        ORDER BY date DESC
+    """
+
+    rows = await asyncio.to_thread(
+        ch.execute,
+        query,
+        {"workspace_id": workspace_id, "days": days},
+        with_column_types=True,
+    )
+
+    data = rows[0] if rows else []
+    daily = []
+    total_cost = 0.0
+    total_calls = 0
+    for row in data:
+        cost = float(row[1])
+        calls = int(row[2])
+        total_cost += cost
+        total_calls += calls
+        daily.append({
+            "date": str(row[0]),
+            "cost_usd": round(cost, 4),
+            "api_calls": calls,
+            "input_tokens": int(row[3]),
+            "output_tokens": int(row[4]),
+        })
+
+    return {
+        "workspace_id": workspace_id,
+        "period_days": days,
+        "total_cost_usd": round(total_cost, 4),
+        "total_api_calls": total_calls,
+        "daily_breakdown": daily,
+    }
+
+
+@router.get("/api/v1/usage", tags=["usage"])
+async def usage_route(
+    workspace_id: WorkspaceDep,
+    days: int = 30,
+):
+    """Get LLM usage and cost breakdown for the workspace."""
+    log.info("api.usage", workspace_id=workspace_id, days=days)
+    try:
+        return await get_usage_stats(workspace_id=workspace_id, days=days)
+    except Exception as exc:
+        log.error("api.usage_error", workspace_id=workspace_id, error=str(exc))
+        return {
+            "workspace_id": workspace_id,
+            "period_days": days,
+            "total_cost_usd": 0.0,
+            "total_api_calls": 0,
+            "daily_breakdown": [],
+            "error": "Usage data temporarily unavailable",
+        }
+
+
 @router.post("/reports", response_model=ReportResponse)
 async def generate_report(
     body: ReportRequest,

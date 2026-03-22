@@ -6,7 +6,7 @@ or Zoho CRM sidebar iframes. Also serves JSON API for custom integrations.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from src.api.deps import SessionDep, WorkspaceDep
@@ -160,3 +160,35 @@ async def embed_scores(
     }
 
     return JSONResponse(content=result)
+
+
+@router.get("/{account_id}/json", tags=["embed"])
+async def embed_json(
+    account_id: str,
+    session: SessionDep,
+    workspace_id: WorkspaceDep,
+):
+    """Return the seller brief as JSON for custom CRM rendering."""
+    brief = await get_seller_brief(session=session, account_id=account_id, workspace_id=workspace_id)
+    if not brief:
+        raise HTTPException(status_code=404, detail="No brief found for this account")
+
+    score = await get_account_score(session=session, account_id=account_id, workspace_id=workspace_id)
+
+    return {
+        "brief_id": brief.id,
+        "account_id": brief.account_id,
+        "version": brief.version,
+        "action_type": brief.action_type,
+        "overall_score": brief.overall_score,
+        "confidence_score": brief.confidence_score,
+        "brief": brief.brief_json,
+        "scoring": {
+            "icp_fit": score.icp_fit_score if score else None,
+            "pain_fit": score.pain_fit_score if score else None,
+            "timing": score.timing_score if score else None,
+            "overall_priority": score.overall_priority_score if score else None,
+            "confidence": score.confidence_score if score else None,
+        },
+        "generated_at": str(brief.generated_at) if brief.generated_at else None,
+    }
