@@ -1,0 +1,270 @@
+// Prisma schema for CMO Agent
+// Used for migrations only — runtime queries go through SQLAlchemy async.
+
+generator client {
+  provider = "prisma-client-py"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CMO_DATABASE_URL")
+}
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  plan      String   @default("free")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  campaigns         Campaign[]
+  accounts          Account[]
+  contacts          Contact[]
+  sequences         Sequence[]
+  messages          Message[]
+  workspaceSettings WorkspaceSettings?
+  campaignMemories  CampaignMemory[]
+  accountScores     AccountScore[]
+  signals           Signal[]
+  painHypotheses    PainHypothesisRecord[]
+  sellerBriefs      SellerBriefRecord[]
+  feedbackEvents    FeedbackEvent[]
+  outcomeEvents     OutcomeEvent[]
+
+  @@map("workspaces")
+}
+
+model Campaign {
+  id             String   @id @default(uuid())
+  workspaceId    String   @map("workspace_id")
+  name           String
+  icpCriteria    Json?    @map("icp_criteria")
+  sequenceConfig Json?    @map("sequence_config")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id])
+  sequences        Sequence[]
+  messages         Message[]
+  campaignMemories CampaignMemory[]
+
+  @@index([workspaceId])
+  @@map("campaigns")
+}
+
+model Account {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  companyName String   @map("company_name")
+  domain      String?
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contacts  Contact[]
+
+  @@index([workspaceId])
+  @@map("accounts")
+}
+
+model Contact {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  accountId   String   @map("account_id")
+  email       String
+  firstName   String?  @map("first_name")
+  lastName    String?  @map("last_name")
+  role        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  account   Account   @relation(fields: [accountId], references: [id])
+  messages  Message[]
+
+  @@index([workspaceId])
+  @@index([accountId])
+  @@map("contacts")
+}
+
+model Sequence {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  campaignId  String   @map("campaign_id")
+  stage       Int
+  templateId  String?  @map("template_id")
+  delayDays   Int      @default(0) @map("delay_days")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  campaign  Campaign  @relation(fields: [campaignId], references: [id])
+
+  @@index([workspaceId])
+  @@index([campaignId])
+  @@map("sequences")
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  contactId   String   @map("contact_id")
+  campaignId  String   @map("campaign_id")
+  subject     String?
+  body        String
+  stage       String
+  status      String   @default("draft")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  contact   Contact   @relation(fields: [contactId], references: [id])
+  campaign  Campaign  @relation(fields: [campaignId], references: [id])
+
+  @@index([workspaceId])
+  @@index([contactId])
+  @@index([campaignId])
+  @@map("messages")
+}
+
+model WorkspaceSettings {
+  id           String   @id @default(uuid())
+  workspaceId  String   @unique @map("workspace_id")
+  settingsData Json?    @map("settings_data")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@map("workspace_settings")
+}
+
+model CampaignMemory {
+  id          String                 @id @default(uuid())
+  workspaceId String                 @map("workspace_id")
+  campaignId  String                 @map("campaign_id")
+  content     String
+  embedding   Unsupported("vector(1536)")
+  createdAt   DateTime               @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  campaign  Campaign  @relation(fields: [campaignId], references: [id])
+
+  @@index([workspaceId])
+  @@index([campaignId])
+  @@map("campaign_memory")
+}
+
+model AccountScore {
+  id                   String   @id @default(uuid())
+  workspaceId          String   @map("workspace_id")
+  accountId            String   @map("account_id")
+  icpFitScore          Int      @map("icp_fit_score")
+  painFitScore         Int      @map("pain_fit_score")
+  timingScore          Int      @map("timing_score")
+  overallPriorityScore Int      @map("overall_priority_score")
+  fitReasons           Json     @default("[]") @map("fit_reasons")
+  nonFitReasons        Json     @default("[]") @map("non_fit_reasons")
+  confidenceScore      Float    @map("confidence_score")
+  isDisqualified       Boolean  @default(false) @map("is_disqualified")
+  disqualifyReason     String?  @map("disqualify_reason")
+  scoringVersion       String   @default("v1") @map("scoring_version")
+  scoredAt             DateTime @default(now()) @map("scored_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, accountId])
+  @@map("account_scores")
+}
+
+model Signal {
+  id                   String    @id @default(uuid())
+  workspaceId          String    @map("workspace_id")
+  accountId            String    @map("account_id")
+  signalType           String    @map("signal_type")
+  source               String
+  observedFact         String    @map("observed_fact")
+  possibleImplication  String    @map("possible_implication")
+  eventDate            DateTime? @map("event_date")
+  recencyScore         Float     @default(0) @map("recency_score")
+  reliabilityScore     Float     @default(0) @map("reliability_score")
+  confidence           Float     @default(0)
+  sourceUrl            String?   @map("source_url")
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, accountId])
+  @@map("signals")
+}
+
+model PainHypothesisRecord {
+  id               String   @id @default(uuid())
+  workspaceId      String   @map("workspace_id")
+  accountId        String   @map("account_id")
+  briefId          String   @map("brief_id")
+  painType         String   @map("pain_type")
+  score            Int
+  supportingFacts  Json     @default("[]") @map("supporting_facts")
+  inferences       Json     @default("[]")
+  unknowns         Json     @default("[]")
+  confidenceScore  Float    @default(0) @map("confidence_score")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, accountId])
+  @@map("pain_hypothesis_records")
+}
+
+model SellerBriefRecord {
+  id               String   @id @default(uuid())
+  workspaceId      String   @map("workspace_id")
+  accountId        String   @map("account_id")
+  version          Int      @default(1)
+  briefJson        Json     @map("brief_json")
+  actionType       String   @map("action_type")
+  overallScore     Int      @map("overall_score")
+  confidenceScore  Float    @map("confidence_score")
+  modelVersion     String   @default("v1") @map("model_version")
+  promptVersion    String   @default("v1") @map("prompt_version")
+  generatedAt      DateTime @default(now()) @map("generated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, accountId])
+  @@index([workspaceId, actionType])
+  @@map("seller_brief_records")
+}
+
+model FeedbackEvent {
+  id                 String   @id @default(uuid())
+  workspaceId        String   @map("workspace_id")
+  recommendationId   String   @map("recommendation_id")
+  recommendationType String   @map("recommendation_type")
+  userId             String   @map("user_id")
+  actionTaken        String   @map("action_taken")
+  correction         String?
+  modelVersion       String   @default("v1") @map("model_version")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, recommendationId])
+  @@map("feedback_events")
+}
+
+model OutcomeEvent {
+  id            String   @id @default(uuid())
+  workspaceId   String   @map("workspace_id")
+  accountId     String   @map("account_id")
+  opportunityId String?  @map("opportunity_id")
+  eventType     String   @map("event_type")
+  details       Json     @default("{}") @map("details")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, accountId])
+  @@map("outcome_events")
+}

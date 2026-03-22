@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent -maxdepth 2 -type f -name *.md -o -name *.json -o -name *.toml -o -name *.yaml -o -name *.yml -o -name Makefile -o -name .env* -o -name .cursorrules)",
+      "Bash(uv sync:*)",
+      "Bash(curl -LsSf https://astral.sh/uv/install.sh)",
+      "Bash(sh)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(uv run:*)",
+      "Bash(docker compose:*)",
+      "Bash(sudo docker:*)",
+      "Bash(ls:*)",
+      "Bash(docker pull:*)",
+      "Bash(docker search:*)",
+      "Bash(docker manifest:*)",
+      "Bash(/home/rupivbluegreen/projects/fun_CMO_agent/.venv/bin/python -m uvicorn src.api.main:app --reload)",
+      "Bash(/home/rupivbluegreen/projects/fun_CMO_agent/.venv/bin/python -m uvicorn src.api.main:app --reload --port 8001)",
+      "Bash(curl -s -X POST http://127.0.0.1:8001/demo/run)",
+      "WebSearch",
+      "Bash(export PATH=\"$HOME/.bun/bin:$PATH\")",
+      "Bash(./setup)",
+      "Bash(grep -E \"^-.*\\\\.\\(yml|yaml|toml|txt|md|lock|cfg|ini|sh\\)$|^d\")",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent -maxdepth 2 -type f \\\\\\(-name *.md -o -name *.prisma -o -name Makefile -o -name .cursorrules -o -name .cursorignore \\\\\\))",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent/knowledge -type f -name *.md)",
+      "Bash(CMO_DEMO_MODE=true /root/.local/bin/uv run uvicorn src.api.main:app --reload --port 9000 --host 0.0.0.0 2>&1)",
+      "Bash(curl -s http://localhost:9000/health)",
+      "Bash(CMO_DEMO_MODE=true .venv/bin/python -c \"from src.api.main import app; print\\('App loaded OK'\\)\" 2>&1)",
+      "Bash(CMO_DEMO_MODE=true .venv/bin/python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8100 2>&1)",
+      "Bash(curl -s http://localhost:8100/health)",
+      "Bash(curl:*)",
+      "Bash(find /home/rupivbluegreen/projects/fun_CMO_agent/src -name \"*.py\" -exec grep -l \"class.*Tool\\\\|def.*tool\" {})",
+      "Bash(wc -l /home/rupivbluegreen/projects/fun_CMO_agent/tests/unit/*.py)",
+      "Bash(wc -l /home/rupivbluegreen/projects/fun_CMO_agent/src/agent/nodes/*.py /home/rupivbluegreen/projects/fun_CMO_agent/src/tools/*.py)"
+    ]
+  }
+}

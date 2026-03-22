@@ -1,0 +1,86 @@
+# OmniGTM Agent Helm values
+
+image:
+  repository: ghcr.io/omnigtm/omnigtm
+  tag: "0.1.0-alpha"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+api:
+  replicas: 2
+  port: 8000
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+worker:
+  replicas: 1
+  command: ["uv", "run", "python", "-m", "src.worker.runner"]
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+env:
+  # Non-secret configuration (stored in ConfigMap)
+  CMO_CLAUDE_MODEL: "claude-sonnet-4-6"
+  CMO_CLAUDE_HAIKU_MODEL: "claude-haiku-4-5-20251001"
+  CMO_REDIS_KEY_PREFIX: "cmo:"
+  CMO_MAX_ACCOUNTS_PER_BATCH: "20"
+  CMO_SEQUENCE_MAX_STAGES: "3"
+  CMO_APOLLO_BASE_URL: "https://api.apollo.io/v1"
+  CMO_CLAY_BASE_URL: "https://api.clay.com/v1"
+  CMO_EMBEDDING_PROVIDER: "anthropic"
+  CMO_EMBEDDING_MODEL: "voyage-3"
+  CMO_EMBEDDING_DIMENSIONS: "1024"
+  CMO_USE_APOLLO_ENRICHMENT: "true"
+  CMO_APOLLO_MCP_ENABLED: "false"
+  CMO_DEMO_MODE: "false"
+  CMO_LOG_LEVEL: "info"
+  CMO_HOST: "0.0.0.0"
+  CMO_PORT: "8000"
+  CMO_N8N_WEBHOOK_BASE_URL: "http://n8n:5678/webhook"
+
+secrets:
+  # IMPORTANT: Never commit real secrets here. Use one of:
+  #   helm install --set secrets.CMO_ANTHROPIC_API_KEY=<value> ...
+  #   helm install -f secrets-override.yaml ...
+  #   External secret management (Sealed Secrets, Vault, AWS Secrets Manager)
+  #
+  # These placeholders will be base64-encoded in the K8s Secret resource.
+  CMO_ANTHROPIC_API_KEY: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_APOLLO_API_KEY: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_CLAY_API_KEY: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_HUBSPOT_API_KEY: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_SLACK_BOT_TOKEN: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_SLACK_SIGNING_SECRET: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_HMAC_SECRET: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_OPENAI_API_KEY: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_DATABASE_URL: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_REDIS_URL: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_CLICKHOUSE_URL: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_LINKEDIN_API_KEY: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_ZOHO_CLIENT_ID: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_ZOHO_CLIENT_SECRET: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+  CMO_ZOHO_REFRESH_TOKEN: "REPLACE_VIA_HELM_SET_OR_EXTERNAL_SECRETS"
+
+ingress:
+  enabled: false
+  className: nginx
+  host: omnigtm.example.com
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: omnigtm-tls
+
+serviceAccount:
+  create: true
+  name: "omnigtm"

@@ -1,0 +1,29 @@
+name: Integration Tests
+on:
+  push:
+    branches: [main]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cmo
+          POSTGRES_PASSWORD: cmo
+          POSTGRES_DB: cmo
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: uv run pytest tests/integration/ --integration -v --tb=short
+        env:
+          CMO_DATABASE_URL: postgresql+asyncpg://cmo:cmo@localhost:5432/cmo
+          CMO_REDIS_URL: redis://localhost:6379/0

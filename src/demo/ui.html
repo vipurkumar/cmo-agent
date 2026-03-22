@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OmniGTM Agent</title>
+<style>
+:root {
+  --bg: #f4f6f9;
+  --card-bg: #ffffff;
+  --header-from: #0f1629;
+  --header-to: #1a1a2e;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+  --green: #16a34a;
+  --green-bg: #f0fdf4;
+  --green-border: #bbf7d0;
+  --green-text: #15803d;
+  --yellow: #d97706;
+  --yellow-bg: #fffbeb;
+  --yellow-border: #fde68a;
+  --yellow-text: #92400e;
+  --red: #dc2626;
+  --red-bg: #fef2f2;
+  --red-border: #fecaca;
+  --red-text: #991b1b;
+  --blue: #2563eb;
+  --blue-bg: #eff6ff;
+  --blue-border: #bfdbfe;
+  --blue-text: #1e40af;
+  --orange: #ea580c;
+  --orange-bg: #fff7ed;
+  --orange-border: #fed7aa;
+  --orange-text: #9a3412;
+  --purple: #7c3aed;
+  --purple-bg: #f5f3ff;
+  --purple-border: #ddd6fe;
+  --purple-text: #5b21b6;
+  --indigo: #6366f1;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.1), 0 4px 8px rgba(0,0,0,0.04);
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Header ---------- */
+
+header {
+  background: linear-gradient(135deg, var(--header-from) 0%, var(--header-to) 50%, #16213e 100%);
+  color: #fff;
+  padding: 2.5rem 1.5rem 2rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(ellipse at 30% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+              radial-gradient(ellipse at 70% 50%, rgba(59, 130, 246, 0.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+header h1 {
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  position: relative;
+}
+
+header h1 span {
+  background: linear-gradient(135deg, #818cf8, #60a5fa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+header p {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  margin-top: 0.375rem;
+  position: relative;
+}
+
+.header-badge {
+  display: inline-block;
+  margin-top: 0.75rem;
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+  padding: 0.3rem 0.85rem;
+  border-radius: 99px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  position: relative;
+}
+
+/* ---------- Tab Bar ---------- */
+
+.tab-bar {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 0.875rem 1.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+  font-family: var(--font);
+}
+
+.tab-btn:hover { color: var(--text); }
+
+.tab-btn.active {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0.75rem;
+  right: 0.75rem;
+  height: 2px;
+  background: var(--blue);
+  border-radius: 2px 2px 0 0;
+}
+
+/* ---------- Main ---------- */
+
+main {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+/* ---------- Button ---------- */
+
+.btn-wrap { text-align: center; margin-bottom: 2rem; }
+
+.run-btn {
+  background: linear-gradient(135deg, var(--blue) 0%, #1d4ed8 100%);
+  color: #fff;
+  border: none;
+  padding: 0.8rem 2.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  font-family: var(--font);
+  box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+}
+
+.run-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(37,99,235,0.35);
+}
+
+.run-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.run-btn.loading { padding-left: 3rem; }
+
+.run-btn.loading::before {
+  content: '';
+  position: absolute;
+  left: 1.1rem;
+  top: 50%;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: -0.55rem;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.hint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  min-height: 1.25rem;
+}
+
+/* ---------- Error ---------- */
+
+.error-banner {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  color: var(--red-text);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+}
+
+/* ---------- Timeline ---------- */
+
+.timeline-line {
+  position: relative;
+  padding-left: 2rem;
+}
+
+.timeline-line::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 1.5rem;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--border) 0%, transparent 100%);
+}
+
+/* ---------- Step Cards ---------- */
+
+.step-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 1rem;
+  overflow: hidden;
+  animation: fadeSlideIn 0.4s ease-out both;
+  position: relative;
+  border: 1px solid var(--border-light);
+}
+
+.step-card.hero {
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+}
+
+.step-card::before {
+  content: '';
+  position: absolute;
+  left: -2rem;
+  top: 1.2rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-left: -4px;
+  border: 2px solid var(--bg);
+  z-index: 1;
+}
+
+.step-card.hero::before {
+  background: var(--indigo);
+  width: 12px;
+  height: 12px;
+  margin-left: -5px;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.step-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.step-label { flex: 1; }
+
+.step-tag {
+  font-size: 0.65rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 99px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.step-body {
+  padding: 1rem 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+/* ---------- Score Gauges ---------- */
+
+.score-gauges {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+
+.gauge {
+  text-align: center;
+}
+
+.gauge-ring {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 0.375rem;
+  position: relative;
+}
+
+.gauge-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.gauge-ring .track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 5;
+}
+
+.gauge-ring .fill {
+  fill: none;
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s ease-out;
+}
+
+.gauge-value {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.gauge-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* ---------- Score Bars ---------- */
+
+.score-bar-wrap {
+  margin: 0.35rem 0;
+}
+
+.score-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  margin-bottom: 0.2rem;
+}
+
+.score-bar-label-text { font-weight: 500; color: var(--text-secondary); }
+.score-bar-value { font-weight: 600; }
+
+.score-bar-track {
+  height: 6px;
+  background: var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.6s ease-out;
+}
+
+/* ---------- Badges ---------- */
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge--green  { background: var(--green-bg); color: var(--green-text); border: 1px solid var(--green-border); }
+.badge--yellow { background: var(--yellow-bg); color: var(--yellow-text); border: 1px solid var(--yellow-border); }
+.badge--red    { background: var(--red-bg); color: var(--red-text); border: 1px solid var(--red-border); }
+.badge--blue   { background: var(--blue-bg); color: var(--blue-text); border: 1px solid var(--blue-border); }
+.badge--orange { background: var(--orange-bg); color: var(--orange-text); border: 1px solid var(--orange-border); }
+.badge--purple { background: var(--purple-bg); color: var(--purple-text); border: 1px solid var(--purple-border); }
+
+.badge-lg {
+  padding: 0.4rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- Chips ---------- */
+
+.chip-list { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.35rem; }
+
+.chip {
+  display: inline-block;
+  padding: 0.175rem 0.55rem;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.chip--blue   { background: var(--blue-bg); color: var(--blue-text); }
+.chip--green  { background: var(--green-bg); color: var(--green-text); }
+.chip--yellow { background: var(--yellow-bg); color: var(--yellow-text); }
+.chip--purple { background: var(--purple-bg); color: var(--purple-text); }
+.chip--orange { background: var(--orange-bg); color: var(--orange-text); }
+.chip--red    { background: var(--red-bg); color: var(--red-text); }
+
+/* ---------- Info Grid ---------- */
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem 1.5rem;
+}
+
+.info-grid dt {
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.info-grid dd { margin-bottom: 0.2rem; font-size: 0.8125rem; }
+
+/* ---------- Section Label ---------- */
+
+.section-label {
+  font-weight: 600;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0.75rem 0 0.3rem;
+}
+
+/* ---------- Evidence Items ---------- */
+
+.evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0;
+}
+
+.evidence-list li {
+  padding: 0.2rem 0;
+  font-size: 0.8rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.ev-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  margin-top: 0.1rem;
+}
+
+.ev-icon--check { color: var(--green); }
+.ev-icon--x { color: var(--red); }
+.ev-icon--info { color: var(--yellow); }
+.ev-icon--question { color: var(--text-muted); }
+
+/* ---------- Signal Card ---------- */
+
+.signal-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.signal-card .signal-fact {
+  font-size: 0.8rem;
+  color: var(--text);
+  margin: 0.35rem 0;
+}
+
+.signal-card .signal-inference {
+  font-size: 0.775rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0.25rem 0;
+}
+
+.signal-bars {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.4rem;
+}
+
+/* ---------- Contact Card ---------- */
+
+.contact-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.contact-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.contact-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--indigo), var(--blue));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.contact-name { font-weight: 600; font-size: 0.85rem; }
+.contact-title { font-size: 0.75rem; color: var(--text-secondary); }
+
+/* ---------- Pain Card ---------- */
+
+.pain-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ---------- Value Prop Card ---------- */
+
+.vp-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.vp-arrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.vp-arrow-from, .vp-arrow-to {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.775rem;
+  font-weight: 500;
+}
+
+.vp-arrow-from { background: var(--red-bg); color: var(--red-text); border: 1px solid var(--red-border); }
+.vp-arrow-to { background: var(--green-bg); color: var(--green-text); border: 1px solid var(--green-border); }
+.vp-arrow-icon { color: var(--text-muted); font-size: 1.1rem; flex-shrink: 0; }
+
+.vp-hook {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0.5rem 0;
+  line-height: 1.4;
+}
+
+.vp-text { font-size: 0.8rem; color: var(--text-secondary); margin: 0.35rem 0; }
+
+/* Expandable */
+.expandable-trigger {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font);
+  margin-top: 0.5rem;
+  transition: all 0.2s;
+}
+
+.expandable-trigger:hover { background: var(--border-light); color: var(--text); }
+
+.expandable-content {
+  display: none;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  background: #fff;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.expandable-content.open { display: block; }
+
+/* ---------- Action Card ---------- */
+
+.action-badge-wrap {
+  text-align: center;
+  margin: 0.5rem 0 1rem;
+}
+
+.action-explanation {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 1rem;
+  padding: 0 1rem;
+  line-height: 1.5;
+}
+
+.threshold-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.775rem;
+  margin-top: 0.5rem;
+}
+
+.threshold-table th {
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+}
+
+.threshold-table td {
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+/* ---------- Seller Brief ---------- */
+
+.brief-document {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.brief-header {
+  background: linear-gradient(135deg, var(--header-from) 0%, var(--header-to) 100%);
+  color: #fff;
+  padding: 1.25rem 1.5rem;
+}
+
+.brief-header h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.brief-header p {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.brief-section {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.brief-section:last-child { border-bottom: none; }
+
+.brief-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--indigo);
+  margin-bottom: 0.5rem;
+}
+
+.brief-text {
+  font-size: 0.8375rem;
+  color: var(--text);
+  line-height: 1.65;
+}
+
+.brief-contact {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.brief-risk {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  padding: 0.2rem 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* ---------- Status Card (small) ---------- */
+
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  animation: fadeSlideIn 0.3s ease-out both;
+  position: relative;
+}
+
+.status-card::before {
+  content: '';
+  position: absolute;
+  left: -2rem;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-left: -3px;
+  margin-top: -4px;
+}
+
+.status-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  flex-shrink: 0;
+}
+
+.status-icon--green { background: var(--green-bg); color: var(--green); }
+.status-icon--blue  { background: var(--blue-bg); color: var(--blue); }
+.status-icon--orange { background: var(--orange-bg); color: var(--orange); }
+
+/* ---------- Email Preview (Outbound) ---------- */
+
+.email-preview {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.email-subj {
+  padding: 0.5rem 0.75rem;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.email-subj span { font-weight: 400; color: var(--text-secondary); }
+
+.email-body-text {
+  padding: 0.75rem;
+  white-space: pre-line;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+/* ---------- Completion Banner ---------- */
+
+.complete-banner {
+  text-align: center;
+  padding: 1.75rem 1.25rem;
+  background: linear-gradient(135deg, #f0fdf4, #eff6ff);
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius);
+  animation: fadeSlideIn 0.4s ease-out both;
+  position: relative;
+}
+
+.complete-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--green-text);
+}
+
+.complete-stats {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.complete-stat {
+  text-align: center;
+}
+
+.complete-stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.complete-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.complete-footer {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ---------- Account Group (Outbound) ---------- */
+
+.account-group {
+  position: relative;
+  margin-bottom: 2rem;
+  padding-left: 2rem;
+}
+
+.account-group::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 2.25rem;
+  bottom: 0.5rem;
+  width: 2px;
+  background: var(--border);
+}
+
+.account-group h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.account-group h2::before {
+  content: '';
+  position: absolute;
+  left: -2rem;
+  width: 16px;
+  height: 16px;
+  background: var(--indigo);
+  border-radius: 50%;
+  border: 3px solid var(--bg);
+}
+
+.account-domain {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+/* Outbound step card overrides */
+.outbound-card {
+  border-left: 4px solid var(--border);
+}
+
+.outbound-card[data-node="account_selector"] { border-left-color: var(--indigo); }
+.outbound-card[data-node="researcher"]       { border-left-color: #0891b2; }
+.outbound-card[data-node="personaliser"]     { border-left-color: var(--purple); }
+.outbound-card[data-node="approval_gate"]    { border-left-color: var(--green); }
+.outbound-card[data-node="sender"]           { border-left-color: var(--blue); }
+.outbound-card[data-node="reply_monitor"]    { border-left-color: var(--orange); }
+.outbound-card[data-node="router"]           { border-left-color: var(--text-secondary); }
+.outbound-card[data-node="notify_sales"]     { border-left-color: var(--yellow); }
+.outbound-card[data-node="memory_updater"]   { border-left-color: #6b7280; }
+
+.outbound-card .step-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.confidence-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.confidence-track {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+  max-width: 160px;
+}
+
+.confidence-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--green);
+  transition: width 0.4s ease-out;
+}
+
+.confidence-pct { font-size: 0.75rem; font-weight: 600; color: var(--green); }
+
+.reasoning { color: var(--text-secondary); font-style: italic; margin-top: 0.25rem; }
+
+.news-list { list-style: none; padding: 0; }
+.news-list li { padding: 0.15rem 0; font-size: 0.8rem; }
+.news-list li::before { content: '-> '; color: #0891b2; font-weight: 600; }
+
+.summary-text { color: var(--text-secondary); }
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 640px) {
+  header h1 { font-size: 1.4rem; }
+  main { padding: 1.5rem 0.75rem 3rem; }
+  .score-gauges { grid-template-columns: repeat(2, 1fr); }
+  .info-grid { grid-template-columns: 1fr; }
+  .vp-arrow { flex-direction: column; }
+  .vp-arrow-icon { transform: rotate(90deg); }
+  .complete-stats { gap: 1rem; }
+  .tab-btn { padding: 0.75rem 1rem; font-size: 0.8rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Omni<span>GTM</span> Agent</h1>
+  <p>AI-Powered Account Intelligence & GTM Execution</p>
+  <span class="header-badge">Qualification + Outbound Automation</span>
+</header>
+
+<nav class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('qualify')" id="tab-qualify">Qualification Pipeline</button>
+  <button class="tab-btn" onclick="switchTab('outbound')" id="tab-outbound">Outbound Pipeline</button>
+</nav>
+
+<main>
+  <div class="btn-wrap">
+    <button class="run-btn" id="run-btn" onclick="runCurrentDemo()">Run Qualification</button>
+    <p class="hint" id="hint"></p>
+  </div>
+  <div id="error"></div>
+  <div id="timeline"></div>
+</main>
+
+<script>
+let currentTab = 'qualify';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  const btn = document.getElementById('run-btn');
+  btn.textContent = tab === 'qualify' ? 'Run Qualification' : 'Run Outbound';
+  document.getElementById('timeline').innerHTML = '';
+  document.getElementById('error').innerHTML = '';
+  document.getElementById('hint').textContent = '';
+}
+
+function runCurrentDemo() {
+  if (currentTab === 'qualify') runQualifyDemo();
+  else runOutboundDemo();
+}
+
+// ===========================
+// QUALIFICATION PIPELINE
+// ===========================
+
+async function runQualifyDemo() {
+  const btn = document.getElementById('run-btn');
+  const hint = document.getElementById('hint');
+  const timeline = document.getElementById('timeline');
+  const errorDiv = document.getElementById('error');
+
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = 'Running pipeline...';
+  hint.textContent = 'Processing accounts through the qualification pipeline...';
+  timeline.innerHTML = '';
+  errorDiv.innerHTML = '';
+
+  try {
+    const resp = await fetch('/demo/qualify', { method: 'POST' });
+    if (!resp.ok) throw new Error('Server returned ' + resp.status);
+    const data = await resp.json();
+    renderQualificationTimeline(data.steps, data.total_nodes_executed);
+  } catch (err) {
+    errorDiv.innerHTML = '<div class="error-banner">Demo failed: ' + esc(err.message) + '. Check that the server is running with CMO_DEMO_MODE=true.</div>';
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = 'Run Qualification Again';
+    hint.textContent = '';
+  }
+}
+
+function renderQualificationTimeline(steps, totalNodes) {
+  const timeline = document.getElementById('timeline');
+  const container = document.createElement('div');
+  container.className = 'timeline-line';
+
+  let cardIdx = 0;
+  let accountsCount = 0;
+  let pursueCount = 0, nurtureCount = 0, disqualifyCount = 0, reviewCount = 0;
+
+  steps.forEach(step => {
+    if (step.node === 'data_ingester') accountsCount = (step.accounts || []).length;
+
+    // Count actions
+    if (step.node === 'action_recommender' && step.action_recommendation) {
+      const a = step.action_recommendation.action;
+      if (a === 'pursue_now') pursueCount++;
+      else if (a === 'nurture') nurtureCount++;
+      else if (a === 'disqualify') disqualifyCount++;
+      else reviewCount++;
+    }
+
+    const card = renderQualifyStep(step, cardIdx);
+    if (card) {
+      container.appendChild(card);
+      cardIdx++;
+    }
+  });
+
+  timeline.appendChild(container);
+
+  // Completion banner
+  const banner = document.createElement('div');
+  banner.className = 'complete-banner';
+  banner.style.animationDelay = (cardIdx * 60) + 'ms';
+  banner.innerHTML =
+    '<div class="complete-title">Qualification Complete</div>' +
+    '<div class="complete-stats">' +
+      statBox(accountsCount || '-', 'Accounts') +
+      statBox(pursueCount, 'Pursue Now') +
+      statBox(nurtureCount, 'Nurture') +
+      statBox(disqualifyCount, 'Disqualify') +
+      statBox(reviewCount, 'Review') +
+      statBox(totalNodes || '-', 'Nodes') +
+    '</div>' +
+    '<div class="complete-footer">Powered by OmniGTM</div>';
+  timeline.appendChild(banner);
+}
+
+function statBox(val, label) {
+  return '<div class="complete-stat"><div class="complete-stat-value">' + val + '</div><div class="complete-stat-label">' + label + '</div></div>';
+}
+
+const QUALIFY_NODE_META = {
+  data_ingester:       { label: 'Data Ingested',           icon: 'DB', iconBg: '#eff6ff', iconColor: '#2563eb' },
+  entity_resolver:     { label: 'Entities Resolved',       icon: 'ID', iconBg: '#f5f3ff', iconColor: '#7c3aed' },
+  icp_scorer:          { label: 'ICP Scoring',             icon: 'FIT', iconBg: '#f0fdf4', iconColor: '#16a34a', hero: true },
+  signal_detector:     { label: 'Signals Detected',        icon: 'SIG', iconBg: '#fff7ed', iconColor: '#ea580c' },
+  contact_ranker:      { label: 'Buying Committee Mapped', icon: 'PPL', iconBg: '#eff6ff', iconColor: '#2563eb', hero: true },
+  pain_inferrer:       { label: 'Pain Hypotheses',         icon: 'DX', iconBg: '#fef2f2', iconColor: '#dc2626' },
+  value_prop_matcher:  { label: 'Value Prop Matched',      icon: 'VP', iconBg: '#f0fdf4', iconColor: '#16a34a' },
+  action_recommender:  { label: 'Action Recommended',      icon: 'GO', iconBg: '#fffbeb', iconColor: '#d97706' },
+  brief_builder:       { label: 'Seller Brief Generated',  icon: 'DOC', iconBg: '#eff6ff', iconColor: '#2563eb', hero: true },
+  brief_reviewer:      { label: 'Brief Reviewed',          icon: 'OK', iconBg: '#f0fdf4', iconColor: '#16a34a', small: true },
+  crm_writer:          { label: 'CRM Updated',             icon: 'HS', iconBg: '#fff7ed', iconColor: '#ea580c', small: true },
+  zoho_writer:         { label: 'Zoho Synced',             icon: 'ZO', iconBg: '#f5f3ff', iconColor: '#7c3aed', small: true },
+  task_creator:        { label: 'Task Created',            icon: 'TK', iconBg: '#eff6ff', iconColor: '#2563eb', small: true },
+  auto_outbound_gate:  { label: 'Outbound Gate',           icon: 'OB', iconBg: '#fffbeb', iconColor: '#d97706', small: true },
+};
+
+function renderQualifyStep(step, idx) {
+  const meta = QUALIFY_NODE_META[step.node];
+  if (!meta) return null;
+
+  // Small status cards
+  if (meta.small) {
+    return renderSmallStatus(step, meta, idx);
+  }
+
+  const card = document.createElement('div');
+  card.className = 'step-card' + (meta.hero ? ' hero' : '');
+  card.style.animationDelay = (idx * 60) + 'ms';
+
+  const iconHtml = '<div class="step-icon" style="background:' + meta.iconBg + ';color:' + meta.iconColor + '"><strong>' + meta.icon + '</strong></div>';
+
+  let tagHtml = '';
+  if (meta.hero) tagHtml = '<span class="step-tag" style="background:' + meta.iconBg + ';color:' + meta.iconColor + '">Key Insight</span>';
+
+  card.innerHTML =
+    '<div class="step-header">' + iconHtml + '<span class="step-label">' + meta.label + '</span>' + tagHtml + '</div>' +
+    '<div class="step-body">' + renderQualifyContent(step) + '</div>';
+
+  return card;
+}
+
+function renderSmallStatus(step, meta, idx) {
+  const card = document.createElement('div');
+  card.className = 'status-card';
+  card.style.animationDelay = (idx * 60) + 'ms';
+
+  let statusText = '';
+  switch (step.node) {
+    case 'brief_reviewer':
+      statusText = step.approval_status === 'approved' ? 'Auto-approved -- brief meets quality threshold' : 'Flagged for human review';
+      break;
+    case 'crm_writer':
+      statusText = 'Written to HubSpot CRM';
+      break;
+    case 'zoho_writer':
+      statusText = 'Synced to Zoho CRM';
+      break;
+    case 'task_creator':
+      statusText = 'Follow-up task created for assigned AE';
+      break;
+    case 'auto_outbound_gate':
+      statusText = step.auto_outbound_triggered ? 'Automation triggered -- outbound sequence initiated' : 'Automation skipped' + (step.auto_outbound_skip_reason ? ' -- ' + esc(step.auto_outbound_skip_reason) : '');
+      break;
+    default:
+      statusText = 'Completed';
+  }
+
+  const iconCls = step.node === 'brief_reviewer' ? 'status-icon--green' : step.node === 'auto_outbound_gate' ? 'status-icon--orange' : 'status-icon--blue';
+  const checkmark = step.node === 'auto_outbound_gate' && !step.auto_outbound_triggered ? '&#x2013;' : '&#x2713;';
+
+  card.innerHTML =
+    '<div class="status-icon ' + iconCls + '">' + checkmark + '</div>' +
+    '<strong style="font-size:0.8rem">' + meta.label + '</strong>' +
+    '<span style="color:var(--text-secondary);font-size:0.775rem;margin-left:0.25rem">' + statusText + '</span>';
+
+  return card;
+}
+
+function renderQualifyContent(step) {
+  switch (step.node) {
+    case 'data_ingester':     return renderDataIngester(step);
+    case 'entity_resolver':   return renderEntityResolver(step);
+    case 'icp_scorer':        return renderIcpScorer(step);
+    case 'signal_detector':   return renderSignalDetector(step);
+    case 'contact_ranker':    return renderContactRanker(step);
+    case 'pain_inferrer':     return renderPainInferrer(step);
+    case 'value_prop_matcher':return renderValuePropMatcher(step);
+    case 'action_recommender':return renderActionRecommender(step);
+    case 'brief_builder':     return renderBriefBuilder(step);
+    default: return '<em>No details available</em>';
+  }
+}
+
+// --- DATA INGESTER ---
+function renderDataIngester(step) {
+  const accounts = step.accounts || [];
+  const contacts = step.contacts || [];
+  let html = '<div class="info-grid">';
+  html += '<dt>Accounts Loaded</dt><dd><strong>' + accounts.length + '</strong></dd>';
+  html += '<dt>Contacts Found</dt><dd><strong>' + contacts.length + '</strong></dd>';
+  html += '</div>';
+
+  if (accounts.length) {
+    html += '<div class="section-label">Accounts</div>';
+    accounts.forEach(a => {
+      html += '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.35rem 0;border-bottom:1px solid var(--border-light)">';
+      html += '<strong style="font-size:0.8rem;min-width:120px">' + esc(a.company_name || '-') + '</strong>';
+      html += '<span style="font-size:0.725rem;color:var(--text-secondary)">' + esc(a.domain || '') + '</span>';
+      if (a.industry) html += '<span class="chip chip--blue">' + esc(a.industry) + '</span>';
+      if (a.employee_count) html += '<span style="font-size:0.725rem;color:var(--text-muted)">' + a.employee_count.toLocaleString() + ' employees</span>';
+      if (a.revenue) html += '<span style="font-size:0.725rem;color:var(--text-muted)">$' + formatRevenue(a.revenue) + '</span>';
+      html += '</div>';
+    });
+  }
+  return html;
+}
+
+function formatRevenue(r) {
+  if (r >= 1e9) return (r / 1e9).toFixed(1) + 'B';
+  if (r >= 1e6) return (r / 1e6).toFixed(1) + 'M';
+  if (r >= 1e3) return (r / 1e3).toFixed(0) + 'K';
+  return r.toString();
+}
+
+// --- ENTITY RESOLVER ---
+function renderEntityResolver(step) {
+  const dedupCount = step.accounts_deduped || step.accounts_deduplicated || 0;
+  const normCount = step.contacts_normalized || 0;
+  return '<div style="display:flex;gap:2rem;align-items:center;justify-content:center;padding:0.5rem 0">' +
+    '<div style="text-align:center"><div style="font-size:1.5rem;font-weight:700;color:var(--purple)">' + dedupCount + '</div><div style="font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em">Accounts Deduplicated</div></div>' +
+    '<div style="text-align:center"><div style="font-size:1.5rem;font-weight:700;color:var(--blue)">' + normCount + '</div><div style="font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.04em">Contacts Normalized</div></div>' +
+  '</div>';
+}
+
+// --- ICP SCORER (HERO) ---
+function renderIcpScorer(step) {
+  const s = step.account_score || {};
+  const acct = step.current_account || {};
+  const icp = s.icp_fit_score || 0;
+  const pain = s.pain_fit_score || 0;
+  const timing = s.timing_score || 0;
+  const overall = s.overall_priority_score || 0;
+  const conf = Math.round((s.confidence_score || 0) * 100);
+
+  let html = '';
+
+  // Company name
+  if (acct.company_name) {
+    html += '<div style="font-size:1.15rem;font-weight:700;margin-bottom:0.25rem">' + esc(acct.company_name) + '</div>';
+  }
+  if (acct.domain) {
+    html += '<span style="font-size:0.775rem;color:var(--text-muted)">' + esc(acct.domain) + '</span>';
+  }
+
+  // Disqualified badge
+  if (s.is_disqualified) {
+    html += '<div style="margin:0.75rem 0"><span class="badge badge--red badge-lg">DISQUALIFIED</span></div>';
+    if (s.disqualify_reason) html += '<div style="font-size:0.8rem;color:var(--red-text);margin-bottom:0.5rem">' + esc(s.disqualify_reason) + '</div>';
+  }
+
+  // Gauges
+  html += '<div class="score-gauges">';
+  html += gauge('ICP Fit', icp);
+  html += gauge('Pain Fit', pain);
+  html += gauge('Timing', timing);
+  html += gauge('Overall', overall);
+  html += '</div>';
+
+  // Confidence
+  html += '<div style="text-align:center;margin:0.25rem 0 0.75rem"><span class="badge badge--blue">Confidence: ' + conf + '%</span></div>';
+
+  // Fit reasons
+  const fitReasons = s.fit_reasons || [];
+  const nonFitReasons = s.non_fit_reasons || [];
+
+  if (fitReasons.length) {
+    html += '<div class="section-label">Fit Reasons</div><ul class="evidence-list">';
+    fitReasons.forEach(r => {
+      html += '<li><span class="ev-icon ev-icon--check">&#x2713;</span><span>' + esc(r.statement || r) + '</span></li>';
+    });
+    html += '</ul>';
+  }
+
+  if (nonFitReasons.length) {
+    html += '<div class="section-label">Non-Fit Reasons</div><ul class="evidence-list">';
+    nonFitReasons.forEach(r => {
+      html += '<li><span class="ev-icon ev-icon--x">&#x2717;</span><span>' + esc(r.statement || r) + '</span></li>';
+    });
+    html += '</ul>';
+  }
+
+  return html;
+}
+
+function gauge(label, value) {
+  const r = 30;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (value / 100) * circ;
+  const color = value > 70 ? 'var(--green)' : value >= 50 ? 'var(--yellow)' : 'var(--red)';
+  const textColor = value > 70 ? 'var(--green-text)' : value >= 50 ? 'var(--yellow-text)' : 'var(--red-text)';
+
+  return '<div class="gauge">' +
+    '<div class="gauge-ring">' +
+      '<svg viewBox="0 0 72 72">' +
+        '<circle class="track" cx="36" cy="36" r="' + r + '"/>' +
+        '<circle class="fill" cx="36" cy="36" r="' + r + '" stroke="' + color + '" stroke-dasharray="' + circ + '" stroke-dashoffset="' + offset + '"/>' +
+      '</svg>' +
+      '<div class="gauge-value" style="color:' + textColor + '">' + value + '</div>' +
+    '</div>' +
+    '<div class="gauge-label">' + label + '</div>' +
+  '</div>';
+}
+
+// --- SIGNAL DETECTOR ---
+function renderSignalDetector(step) {
+  const signals = step.signals || [];
+  if (!signals.length) return '<div style="color:var(--text-muted);font-style:italic">No signals detected</div>';
+
+  const signalColors = {
+    pricing_change: 'blue', usage_based_pricing: 'purple', international_expansion: 'green',
+    enterprise_motion: 'blue', hiring_revops_pricing: 'orange', billing_cpq_change: 'yellow',
+    funding: 'green', acquisition: 'purple', new_product_launch: 'blue',
+    leadership_change: 'orange', partner_channel_motion: 'green', public_friction: 'red'
+  };
+
+  let html = '';
+  signals.forEach(sig => {
+    const chipCls = 'chip--' + (signalColors[sig.signal_type] || 'blue');
+    const recency = Math.round((sig.recency_score || 0) * 100);
+    const confidence = Math.round((sig.confidence || 0) * 100);
+
+    html += '<div class="signal-card">';
+    html += '<span class="chip ' + chipCls + '">' + formatEnum(sig.signal_type) + '</span>';
+    html += '<div class="signal-fact"><span style="font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted)">FACT </span>"' + esc(sig.observed_fact || '') + '"</div>';
+    html += '<div class="signal-inference"><span style="font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);font-style:normal">INFERENCE </span>' + esc(sig.possible_implication || '') + '</div>';
+    html += '<div class="signal-bars">';
+    html += miniBar('Recency', recency);
+    html += miniBar('Confidence', confidence);
+    html += '</div>';
+    html += '</div>';
+  });
+  return html;
+}
+
+function miniBar(label, value) {
+  const color = value > 70 ? 'var(--green)' : value >= 50 ? 'var(--yellow)' : 'var(--red)';
+  return '<div style="flex:1"><div class="score-bar-label"><span class="score-bar-label-text">' + label + '</span><span class="score-bar-value" style="color:' + color + '">' + value + '%</span></div>' +
+    '<div class="score-bar-track"><div class="score-bar-fill" style="width:' + value + '%;background:' + color + '"></div></div></div>';
+}
+
+// --- CONTACT RANKER (HERO) ---
+function renderContactRanker(step) {
+  const bc = step.buying_committee || {};
+  const contacts = bc.ranked_contacts || step.ranked_contacts || [];
+  const conf = Math.round((bc.committee_confidence || 0) * 100);
+
+  const roleColors = {
+    economic_buyer: 'green', pain_owner: 'orange', operator: 'blue',
+    technical_evaluator: 'purple', executive_sponsor: 'green', blocker: 'red', unknown: 'yellow'
+  };
+
+  let html = '';
+
+  if (conf) {
+    html += '<div style="margin-bottom:0.75rem"><span class="badge badge--blue">Committee Confidence: ' + conf + '%</span></div>';
+  }
+
+  contacts.forEach(c => {
+    const initials = ((c.name || '').split(' ').map(w => w[0] || '').join('').substring(0, 2)).toUpperCase();
+    const roleCls = 'chip--' + (roleColors[c.likely_role] || 'blue');
+    const relScore = c.relevance_score || 0;
+
+    html += '<div class="contact-card">';
+    html += '<div class="contact-header">';
+    html += '<div class="contact-avatar">' + initials + '</div>';
+    html += '<div><div class="contact-name">' + esc(c.name || '') + '</div><div class="contact-title">' + esc(c.title || '') + '</div></div>';
+    html += '<span class="chip ' + roleCls + '" style="margin-left:auto">' + formatEnum(c.likely_role || 'unknown') + '</span>';
+    html += '</div>';
+    html += miniBar('Relevance', relScore);
+    if (c.reason_for_relevance) {
+      html += '<div style="font-size:0.775rem;color:var(--text-secondary);margin-top:0.35rem;font-style:italic">"' + esc(c.reason_for_relevance) + '"</div>';
+    }
+    html += '</div>';
+  });
+
+  return html;
+}
+
+// --- PAIN INFERRER ---
+function renderPainInferrer(step) {
+  const pains = step.pain_hypotheses || [];
+  if (!pains.length) return '<div style="color:var(--text-muted);font-style:italic">No pain hypotheses generated</div>';
+
+  let html = '';
+  pains.forEach(p => {
+    const score = p.score || 0;
+    const conf = Math.round((p.confidence_score || 0) * 100);
+
+    html += '<div class="pain-card">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">';
+    html += '<strong style="font-size:0.85rem">' + formatEnum(p.pain_type) + '</strong>';
+    html += '<span class="badge badge--' + (conf > 70 ? 'green' : conf >= 50 ? 'yellow' : 'orange') + '">Confidence: ' + conf + '%</span>';
+    html += '</div>';
+    html += miniBar('Score', score);
+
+    const facts = p.supporting_facts || [];
+    const inferences = p.inferences || [];
+    const unknowns = p.unknowns || [];
+
+    if (facts.length) {
+      html += '<ul class="evidence-list" style="margin-top:0.4rem">';
+      facts.forEach(f => { html += '<li><span class="ev-icon ev-icon--check">&#x2713;</span><span>' + esc(f.statement || f) + '</span></li>'; });
+      html += '</ul>';
+    }
+    if (inferences.length) {
+      html += '<ul class="evidence-list">';
+      inferences.forEach(i => { html += '<li><span class="ev-icon ev-icon--info">!</span><span style="color:var(--yellow-text)">' + esc(i) + '</span></li>'; });
+      html += '</ul>';
+    }
+    if (unknowns.length) {
+      html += '<ul class="evidence-list">';
+      unknowns.forEach(u => { html += '<li><span class="ev-icon ev-icon--question">?</span><span style="color:var(--text-muted)">' + esc(u) + '</span></li>'; });
+      html += '</ul>';
+    }
+
+    html += '</div>';
+  });
+  return html;
+}
+
+// --- VALUE PROP MATCHER ---
+function renderValuePropMatcher(step) {
+  const vps = step.value_props || [];
+  if (!vps.length) return '<div style="color:var(--text-muted);font-style:italic">No value propositions matched</div>';
+
+  let html = '';
+  vps.forEach((vp, i) => {
+    const expandId = 'vp-expand-' + i;
+
+    html += '<div class="vp-card">';
+    // Problem -> Solution
+    html += '<div class="vp-arrow">';
+    html += '<div class="vp-arrow-from"><strong>Problem:</strong> ' + esc(vp.top_problem || '') + '</div>';
+    html += '<div class="vp-arrow-icon">&#x2192;</div>';
+    html += '<div class="vp-arrow-to"><strong>Solution:</strong> ' + esc(vp.relevant_capability || '') + '</div>';
+    html += '</div>';
+
+    // Hook
+    html += '<div class="vp-hook">"' + esc(vp.one_line_hook || '') + '"</div>';
+
+    // Value prop
+    html += '<div class="vp-text">' + esc(vp.short_value_prop || '') + '</div>';
+
+    // Proof point
+    if (vp.proof_point) {
+      html += '<div style="margin-top:0.4rem;padding:0.35rem 0.6rem;background:var(--green-bg);border-radius:var(--radius-sm);font-size:0.75rem;color:var(--green-text)">';
+      html += '<strong>Proof:</strong> ' + esc(vp.proof_point.statement || '');
+      if (vp.proof_point.source) html += ' <span style="color:var(--text-muted)">(' + esc(vp.proof_point.source) + ')</span>';
+      html += '</div>';
+    }
+
+    // Objection expandable
+    if (vp.likely_objection) {
+      html += '<button class="expandable-trigger" onclick="toggleExpand(\'' + expandId + '\', this)">Objection & Response</button>';
+      html += '<div class="expandable-content" id="' + expandId + '">';
+      html += '<div style="margin-bottom:0.4rem"><strong style="color:var(--red-text)">Objection:</strong> ' + esc(vp.likely_objection) + '</div>';
+      html += '<div><strong style="color:var(--green-text)">Response:</strong> ' + esc(vp.suggested_response || '') + '</div>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+  });
+  return html;
+}
+
+function toggleExpand(id, btn) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.toggle('open');
+    btn.textContent = el.classList.contains('open') ? 'Hide' : 'Objection & Response';
+  }
+}
+
+// --- ACTION RECOMMENDER ---
+function renderActionRecommender(step) {
+  const ar = step.action_recommendation || {};
+  const action = ar.action || 'unknown';
+
+  const actionMeta = {
+    pursue_now: { label: 'PURSUE NOW', cls: 'badge--green' },
+    nurture:    { label: 'NURTURE', cls: 'badge--yellow' },
+    disqualify: { label: 'DISQUALIFY', cls: 'badge--red' },
+    human_review_required: { label: 'HUMAN REVIEW REQUIRED', cls: 'badge--orange' },
+  };
+
+  const meta = actionMeta[action] || { label: action.toUpperCase().replace(/_/g, ' '), cls: 'badge--blue' };
+
+  let html = '<div class="action-badge-wrap"><span class="badge ' + meta.cls + ' badge-lg">' + meta.label + '</span></div>';
+  html += '<div class="action-explanation">' + esc(ar.explanation || '') + '</div>';
+
+  // Best contact + channel
+  const bc = ar.best_first_contact;
+  if (bc || ar.best_channel) {
+    html += '<div style="display:flex;gap:1.5rem;justify-content:center;margin-bottom:0.75rem;flex-wrap:wrap">';
+    if (bc) html += '<div style="text-align:center"><div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:0.15rem">Best Contact</div><strong style="font-size:0.85rem">' + esc(bc.name || '') + '</strong><div style="font-size:0.725rem;color:var(--text-secondary)">' + esc(bc.title || '') + '</div></div>';
+    if (ar.best_channel) html += '<div style="text-align:center"><div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:0.15rem">Best Channel</div><span class="badge badge--blue">' + esc(ar.best_channel) + '</span></div>';
+    html += '</div>';
+  }
+
+  // Threshold table
+  const td = ar.threshold_details || {};
+  const keys = Object.keys(td);
+  if (keys.length) {
+    html += '<table class="threshold-table"><thead><tr><th>Metric</th><th>Threshold</th><th>Actual</th><th>Pass</th></tr></thead><tbody>';
+    keys.forEach(k => {
+      const v = td[k];
+      if (typeof v === 'object' && v !== null) {
+        const pass = v.actual >= v.threshold;
+        html += '<tr><td>' + formatEnum(k) + '</td><td>' + (v.threshold || '-') + '</td><td>' + (v.actual || '-') + '</td><td>' + (pass ? '<span style="color:var(--green)">&#x2713;</span>' : '<span style="color:var(--red)">&#x2717;</span>') + '</td></tr>';
+      } else {
+        html += '<tr><td>' + formatEnum(k) + '</td><td colspan="3">' + esc(String(v)) + '</td></tr>';
+      }
+    });
+    html += '</tbody></table>';
+  }
+
+  return html;
+}
+
+// --- BRIEF BUILDER (HERO) ---
+function renderBriefBuilder(step) {
+  const b = step.seller_brief || {};
+  if (!b.account_snapshot) return '<div style="color:var(--text-muted);font-style:italic">Brief not available</div>';
+
+  let html = '<div class="brief-document">';
+
+  // Header
+  html += '<div class="brief-header">';
+  html += '<h3>Seller Brief</h3>';
+  html += '<p>' + esc(b.account_snapshot || '') + '</p>';
+  html += '</div>';
+
+  // Why This Account
+  html += '<div class="brief-section">';
+  html += '<div class="brief-section-title">Why This Account</div>';
+  html += '<div class="brief-text">' + esc(b.why_this_account || '') + '</div>';
+  html += '</div>';
+
+  // Why Now
+  html += '<div class="brief-section">';
+  html += '<div class="brief-section-title">Why Now</div>';
+  html += '<div class="brief-text">' + esc(b.why_now || '') + '</div>';
+  if (b.signals_used && b.signals_used.length) {
+    html += '<div style="margin-top:0.5rem">';
+    b.signals_used.forEach(sig => {
+      html += '<span class="chip chip--orange" style="margin-right:0.25rem;margin-bottom:0.25rem">' + formatEnum(sig.signal_type || '') + '</span>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Pain Points
+  const pains = b.likely_pain_points || [];
+  if (pains.length) {
+    html += '<div class="brief-section">';
+    html += '<div class="brief-section-title">Key Pain Points</div>';
+    pains.forEach(p => {
+      const score = p.score || 0;
+      const color = score > 70 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+      html += '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.3rem 0;border-bottom:1px solid var(--border-light)">';
+      html += '<strong style="font-size:0.8rem;min-width:140px">' + formatEnum(p.pain_type) + '</strong>';
+      html += '<div style="flex:1">' + miniBar('', score) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Recommended Contacts
+  const contacts = b.recommended_contacts || [];
+  if (contacts.length) {
+    html += '<div class="brief-section">';
+    html += '<div class="brief-section-title">Recommended Contacts</div>';
+    contacts.forEach(c => {
+      html += '<div class="brief-contact">';
+      html += '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem">';
+      html += '<strong style="font-size:0.85rem">' + esc(c.name || '') + '</strong>';
+      html += '<span style="font-size:0.75rem;color:var(--text-secondary)">' + esc(c.title || '') + '</span>';
+      html += '<span class="chip chip--' + roleColor(c.likely_role) + '" style="margin-left:auto">' + formatEnum(c.likely_role || '') + '</span>';
+      html += '</div>';
+      if (c.reason_for_relevance) {
+        html += '<div style="font-size:0.775rem;color:var(--text-secondary)"><strong>Talk Track:</strong> ' + esc(c.reason_for_relevance) + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Persona Angles / Value Props
+  const angles = b.persona_angles || [];
+  if (angles.length) {
+    html += '<div class="brief-section">';
+    html += '<div class="brief-section-title">Value Proposition Angles</div>';
+    angles.forEach(a => {
+      html += '<div style="padding:0.4rem 0;border-bottom:1px solid var(--border-light)">';
+      html += '<div style="font-weight:600;font-size:0.8125rem;margin-bottom:0.15rem">"' + esc(a.one_line_hook || '') + '"</div>';
+      html += '<div style="font-size:0.775rem;color:var(--text-secondary)">' + esc(a.short_value_prop || '') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Risks & Unknowns
+  const risks = b.risks_and_unknowns || [];
+  if (risks.length) {
+    html += '<div class="brief-section">';
+    html += '<div class="brief-section-title">Risks & Unknowns</div>';
+    risks.forEach(r => {
+      html += '<div class="brief-risk"><span class="ev-icon ev-icon--info">!</span><span>' + esc(r) + '</span></div>';
+    });
+    html += '</div>';
+  }
+
+  // Action
+  if (b.recommended_action) {
+    const ra = b.recommended_action;
+    const actionMeta = {
+      pursue_now: { label: 'PURSUE NOW', cls: 'badge--green' },
+      nurture: { label: 'NURTURE', cls: 'badge--yellow' },
+      disqualify: { label: 'DISQUALIFY', cls: 'badge--red' },
+      human_review_required: { label: 'REVIEW', cls: 'badge--orange' },
+    };
+    const am = actionMeta[ra.action] || { label: 'UNKNOWN', cls: 'badge--blue' };
+    html += '<div class="brief-section" style="text-align:center;background:var(--bg)">';
+    html += '<span class="badge ' + am.cls + ' badge-lg">' + am.label + '</span>';
+    if (ra.explanation) html += '<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.35rem">' + esc(ra.explanation) + '</div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function roleColor(role) {
+  const m = { economic_buyer: 'green', pain_owner: 'orange', operator: 'blue', technical_evaluator: 'purple', executive_sponsor: 'green', blocker: 'red' };
+  return m[role] || 'blue';
+}
+
+// ===========================
+// OUTBOUND PIPELINE (EXISTING)
+// ===========================
+
+const OUTBOUND_NODE_META = {
+  account_selector: { label: 'Account Selected',  icon: 'TGT' },
+  researcher:       { label: 'Research Complete',  icon: 'RSH' },
+  personaliser:     { label: 'Email Drafted',      icon: 'MSG' },
+  approval_gate:    { label: 'Approval Gate',      icon: 'APR' },
+  sender:           { label: 'Email Sent',         icon: 'SND' },
+  reply_monitor:    { label: 'Reply Analyzed',     icon: 'RPL' },
+  router:           { label: 'Routing Decision',   icon: 'RTE' },
+  notify_sales:     { label: 'Sales Notified',     icon: 'NTF' },
+  memory_updater:   { label: 'Memory Updated',     icon: 'MEM' },
+};
+
+async function runOutboundDemo() {
+  const btn = document.getElementById('run-btn');
+  const hint = document.getElementById('hint');
+  const timeline = document.getElementById('timeline');
+  const errorDiv = document.getElementById('error');
+
+  btn.disabled = true;
+  btn.classList.add('loading');
+  btn.textContent = 'Running agent...';
+  hint.textContent = 'Processing accounts through the outbound pipeline...';
+  timeline.innerHTML = '';
+  errorDiv.innerHTML = '';
+
+  try {
+    const resp = await fetch('/demo/run', { method: 'POST' });
+    if (!resp.ok) throw new Error('Server returned ' + resp.status);
+    const data = await resp.json();
+    renderOutboundTimeline(data.steps, data.total_nodes_executed);
+  } catch (err) {
+    errorDiv.innerHTML = '<div class="error-banner">Demo failed: ' + esc(err.message) + '. Check that the server is running with CMO_DEMO_MODE=true.</div>';
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    btn.textContent = 'Run Outbound Again';
+    hint.textContent = '';
+  }
+}
+
+function renderOutboundTimeline(steps, totalNodes) {
+  const timeline = document.getElementById('timeline');
+  const groups = groupByAccount(steps);
+  let cardIndex = 0;
+
+  groups.forEach((group, gi) => {
+    const article = document.createElement('article');
+    article.className = 'account-group';
+
+    const h2 = document.createElement('h2');
+    const name = group.companyName || ('Account ' + (gi + 1));
+    const domain = group.domain || '';
+    h2.innerHTML = esc(name) + ' <span class="account-domain">' + esc(domain) + '</span>';
+    article.appendChild(h2);
+
+    group.steps.forEach(step => {
+      const meta = OUTBOUND_NODE_META[step.node] || { label: step.node, icon: 'RUN' };
+      const card = document.createElement('div');
+      card.className = 'step-card outbound-card';
+      card.dataset.node = step.node;
+      card.style.animationDelay = (cardIndex * 80) + 'ms';
+
+      card.innerHTML =
+        '<div class="step-header">' +
+          '<div class="step-icon" style="background:var(--blue-bg);color:var(--blue)"><strong style="font-size:0.55rem">' + meta.icon + '</strong></div>' +
+          '<span class="step-label">' + meta.label + '</span>' +
+        '</div>' +
+        '<div class="step-body">' + renderOutboundContent(step) + '</div>';
+      article.appendChild(card);
+      cardIndex++;
+    });
+
+    timeline.appendChild(article);
+  });
+
+  const banner = document.createElement('div');
+  banner.className = 'complete-banner';
+  banner.style.animationDelay = (cardIndex * 80) + 'ms';
+  banner.innerHTML =
+    '<div class="complete-title">Outbound Complete</div>' +
+    '<div class="complete-stats">' +
+      statBox(groups.length, 'Accounts') +
+      statBox(totalNodes || '-', 'Nodes') +
+    '</div>' +
+    '<div class="complete-footer">Powered by OmniGTM</div>';
+  timeline.appendChild(banner);
+}
+
+function groupByAccount(steps) {
+  const groups = [];
+  let current = null;
+  steps.forEach(step => {
+    if (step.node === 'account_selector') {
+      const acct = step.current_account || {};
+      current = { companyName: acct.company_name || 'Unknown', domain: acct.domain || '', steps: [] };
+      groups.push(current);
+    }
+    if (current) current.steps.push(step);
+  });
+  return groups;
+}
+
+function renderOutboundContent(step) {
+  switch (step.node) {
+    case 'account_selector': return renderOBAccountSelector(step);
+    case 'researcher':       return renderOBResearcher(step);
+    case 'personaliser':     return renderOBPersonaliser(step);
+    case 'approval_gate':    return renderOBApprovalGate(step);
+    case 'sender':           return renderOBSender(step);
+    case 'reply_monitor':    return renderOBReplyMonitor(step);
+    case 'router':           return renderOBRouter(step);
+    case 'notify_sales':     return 'Sales team notified via Slack and HubSpot CRM.';
+    case 'memory_updater':   return 'Campaign learnings stored. State reset for next account.';
+    default: return '<em>No details</em>';
+  }
+}
+
+function renderOBAccountSelector(s) {
+  const a = s.current_account || {};
+  const c = s.current_contact || {};
+  return '<dl class="info-grid">' +
+    '<dt>Company</dt><dd>' + esc(a.company_name || '-') + '</dd>' +
+    '<dt>Industry</dt><dd>' + esc(a.industry || '-') + '</dd>' +
+    '<dt>Domain</dt><dd>' + esc(a.domain || '-') + '</dd>' +
+    '<dt>Employees</dt><dd>' + (a.employee_count || '-') + '</dd>' +
+    '<dt>Contact</dt><dd>' + esc((c.first_name || '') + ' ' + (c.last_name || '')) + '</dd>' +
+    '<dt>Role</dt><dd>' + esc(c.role || '-') + '</dd>' +
+    '<dt>Email</dt><dd>' + esc(c.email || '-') + '</dd>' +
+    '<dt>Stage</dt><dd>' + (s.current_stage || 1) + ' of 3</dd>' +
+  '</dl>';
+}
+
+function renderOBResearcher(s) {
+  const e = s.enrichment || {};
+  const news = (e.recent_news || []).map(n => '<li>' + esc(n) + '</li>').join('');
+  const pains = (e.pain_points || []).map(p => '<span class="chip chip--orange">' + esc(p) + '</span>').join('');
+  const techs = (e.technologies || []).map(t => '<span class="chip chip--blue">' + esc(t) + '</span>').join('');
+  const hooks = (e.personalization_hooks || []).map(h => '<span class="chip chip--green">' + esc(h) + '</span>').join('');
+
+  return '<p class="summary-text">' + esc(e.company_summary || '') + '</p>' +
+    '<div class="section-label">Recent News</div><ul class="news-list">' + (news || '<li>No news found</li>') + '</ul>' +
+    '<div class="section-label">Pain Points</div><div class="chip-list">' + (pains || '-') + '</div>' +
+    '<div class="section-label">Tech Stack</div><div class="chip-list">' + (techs || '-') + '</div>' +
+    '<div class="section-label">Personalization Hooks</div><div class="chip-list">' + (hooks || '-') + '</div>';
+}
+
+function renderOBPersonaliser(s) {
+  const d = s.draft_email || {};
+  const score = Math.round((d.personalization_score || 0) * 100);
+  return '<div class="email-preview">' +
+    '<div class="email-subj"><span>Subject: </span>' + esc(d.subject_line || '') + '</div>' +
+    '<div class="email-body-text">' + esc(d.body || '') + '</div>' +
+  '</div>' +
+  '<div style="margin-top:0.5rem"><span class="section-label" style="margin:0">Personalization Score</span> <span class="badge badge--blue" style="margin-left:0.5rem">' + score + '%</span></div>';
+}
+
+function renderOBApprovalGate(s) {
+  const status = s.approval_status || 'unknown';
+  const cls = status === 'approved' ? 'badge--green' : 'badge--red';
+  const label = status.charAt(0).toUpperCase() + status.slice(1);
+  return '<span class="badge ' + cls + '">' + label + '</span> -- Email reviewed and ' + (status === 'approved' ? 'cleared for sending' : 'rejected by reviewer') + '.';
+}
+
+function renderOBSender(s) {
+  const msgs = s.sent_messages || [];
+  if (!msgs.length) return 'Email dispatched via outbound channel.';
+  const last = msgs[msgs.length - 1];
+  return 'Email sent to <strong>' + esc(last.contact_id) + '</strong> (Stage ' + last.stage + '). Status: <span class="badge badge--green">' + esc(last.status) + '</span>';
+}
+
+function renderOBReplyMonitor(s) {
+  const r = s.reply_analysis || {};
+  const pct = Math.round((r.confidence || 0) * 100);
+  const intentCls = r.intent === 'positive' ? 'badge--green' : r.intent === 'negative' ? 'badge--red' : 'badge--orange';
+
+  return '<dl class="info-grid" style="grid-template-columns:auto 1fr">' +
+    '<dt>Intent</dt><dd><span class="badge ' + intentCls + '">' + esc(r.intent || '-') + '</span></dd>' +
+    '<dt>Confidence</dt><dd><div class="confidence-bar"><div class="confidence-track"><div class="confidence-fill" style="width:' + pct + '%"></div></div><span class="confidence-pct">' + pct + '%</span></div></dd>' +
+    '<dt>Action</dt><dd><span class="badge badge--blue">' + esc(r.suggested_action || '-') + '</span></dd>' +
+  '</dl>' +
+  '<p class="reasoning">"' + esc(r.reasoning || '') + '"</p>';
+}
+
+function renderOBRouter(s) {
+  if (s.should_continue) return 'Advancing to stage ' + (s.current_stage || '?') + '. Sequence continues.';
+  return 'Sequence complete for this account. Routing to next action.';
+}
+
+// ===========================
+// UTILITIES
+// ===========================
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = String(str || '');
+  return d.innerHTML;
+}
+
+function formatEnum(val) {
+  if (!val) return '';
+  return String(val).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+</script>
+</body>
+</html>
