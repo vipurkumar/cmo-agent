@@ -110,6 +110,14 @@ from src.api.notifications import router as notifications_router  # noqa: E402
 
 app.include_router(notifications_router)
 
+from src.api.users import router as users_router  # noqa: E402
+
+app.include_router(users_router)
+
+from src.api.webhooks_mgmt import router as webhooks_mgmt_router  # noqa: E402
+
+app.include_router(webhooks_mgmt_router)
+
 
 # ---------------------------------------------------------------------------
 # Structured error handlers

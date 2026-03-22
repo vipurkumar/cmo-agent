@@ -16,7 +16,13 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from src.config import settings
+from src.db.queries import (
+    async_session_factory,
+    save_notification as _db_save_notification,
+    list_notifications as _db_list_notifications,
+    mark_notification_read as _db_mark_read,
+    count_unread_notifications as _db_count_unread,
+)
 from src.logger import log
 
 
@@ -50,10 +56,6 @@ class Notification(BaseModel):
     read: bool = False
 
 
-# In-memory store for notifications (for MVP — replace with DB table later)
-_notifications: dict[str, list[Notification]] = {}
-
-
 async def send_notification(
     workspace_id: str,
     notification_type: NotificationType,
@@ -62,63 +64,103 @@ async def send_notification(
     priority: NotificationPriority = NotificationPriority.MEDIUM,
     metadata: dict[str, Any] | None = None,
 ) -> Notification:
-    """Send a notification to a workspace. Stores in-memory and optionally posts to Slack.
+    """Send a notification — persists to PostgreSQL."""
+    try:
+        async with async_session_factory() as session:
+            record = await _db_save_notification(
+                session=session,
+                workspace_id=workspace_id,
+                notification_type=notification_type.value,
+                priority=priority.value,
+                title=title,
+                message=message,
+                metadata=metadata,
+            )
+            await session.commit()
 
-    This is best-effort — never raises exceptions to the caller.
-    """
-    notification = Notification(
-        workspace_id=workspace_id,
-        notification_type=notification_type,
-        priority=priority,
-        title=title,
-        message=message,
-        metadata=metadata or {},
-    )
+            notification = Notification(
+                id=record.id,
+                workspace_id=workspace_id,
+                notification_type=notification_type,
+                priority=priority,
+                title=title,
+                message=message,
+                metadata=metadata or {},
+            )
+            log.info(
+                "notification.sent",
+                workspace_id=workspace_id,
+                notification_type=notification_type.value,
+                priority=priority.value,
+                title=title,
+            )
+            return notification
+    except Exception as exc:
+        log.error("notification.send_failed", error=str(exc), workspace_id=workspace_id)
+        # Return a notification object even on failure (best-effort)
+        return Notification(
+            workspace_id=workspace_id,
+            notification_type=notification_type,
+            priority=priority,
+            title=title,
+            message=message,
+            metadata=metadata or {},
+        )
 
-    # Store in memory
-    if workspace_id not in _notifications:
-        _notifications[workspace_id] = []
-    _notifications[workspace_id].append(notification)
 
-    # Keep only last 100 notifications per workspace
-    if len(_notifications[workspace_id]) > 100:
-        _notifications[workspace_id] = _notifications[workspace_id][-100:]
-
-    log.info(
-        "notification.sent",
-        workspace_id=workspace_id,
-        notification_type=notification_type.value,
-        priority=priority.value,
-        title=title,
-    )
-
-    return notification
-
-
-def get_notifications(
+async def get_notifications(
     workspace_id: str,
     unread_only: bool = False,
     limit: int = 50,
 ) -> list[Notification]:
-    """Get notifications for a workspace."""
-    notifs = _notifications.get(workspace_id, [])
-    if unread_only:
-        notifs = [n for n in notifs if not n.read]
-    return sorted(notifs, key=lambda n: n.created_at, reverse=True)[:limit]
+    """Get notifications from PostgreSQL."""
+    try:
+        async with async_session_factory() as session:
+            records = await _db_list_notifications(
+                session=session,
+                workspace_id=workspace_id,
+                unread_only=unread_only,
+                limit=limit,
+            )
+            return [
+                Notification(
+                    id=r.id,
+                    workspace_id=r.workspace_id,
+                    notification_type=NotificationType(r.notification_type),
+                    priority=NotificationPriority(r.priority),
+                    title=r.title,
+                    message=r.message,
+                    metadata=r.metadata_ or {},
+                    read=r.read,
+                    created_at=r.created_at or datetime.now(UTC),
+                )
+                for r in records
+            ]
+    except Exception as exc:
+        log.error("notification.list_failed", error=str(exc))
+        return []
 
 
-def mark_as_read(workspace_id: str, notification_id: str) -> bool:
-    """Mark a notification as read. Returns True if found."""
-    for n in _notifications.get(workspace_id, []):
-        if n.id == notification_id:
-            n.read = True
-            return True
-    return False
+async def mark_as_read(workspace_id: str, notification_id: str) -> bool:
+    """Mark a notification as read in PostgreSQL."""
+    try:
+        async with async_session_factory() as session:
+            result = await _db_mark_read(session, notification_id, workspace_id)
+            await session.commit()
+            return result
+    except Exception as exc:
+        log.error("notification.mark_read_failed", error=str(exc))
+        return False
 
 
-def get_unread_count(workspace_id: str) -> int:
-    """Get count of unread notifications."""
-    return sum(1 for n in _notifications.get(workspace_id, []) if not n.read)
+async def get_unread_count(workspace_id: str) -> int:
+    """Get unread count from PostgreSQL."""
+    try:
+        async with async_session_factory() as session:
+            return await _db_count_unread(session, workspace_id)
+    except Exception as exc:
+        log.error("notification.count_failed", error=str(exc))
+        return 0
 
 
 # ---------------------------------------------------------------------------

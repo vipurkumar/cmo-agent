@@ -15,13 +15,59 @@ Uses FastAPI TestClient with mocked DB, Redis, and external services.
 from __future__ import annotations
 
 import hashlib
+import sys
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
+
+# ---------------------------------------------------------------------------
+# Patch missing third-party modules and module-level engine creation before
+# any app code is imported.  In CI/test environments some native dependencies
+# (asyncpg, bullmq, clickhouse_driver, etc.) may not be installed.
+# ---------------------------------------------------------------------------
+
+_STUB_MODULES = [
+    "asyncpg",
+    "bullmq",
+    "clickhouse_driver",
+    "pgvector",
+    "pgvector.sqlalchemy",
+    "voyageai",
+    "redis",
+    "redis.asyncio",
+    "redis.exceptions",
+    "anthropic",
+    "langgraph",
+    "langgraph.graph",
+    "langgraph.graph.state",
+    "langgraph.checkpoint",
+    "langgraph.checkpoint.base",
+    "langgraph_checkpoint_redis",
+    "prometheus_client",
+    "opentelemetry",
+    "opentelemetry.trace",
+    "opentelemetry.sdk",
+    "opentelemetry.instrumentation",
+]
+
+for _mod in _STUB_MODULES:
+    if _mod not in sys.modules:
+        sys.modules[_mod] = MagicMock()
+
+_mock_engine = MagicMock()
+
+with patch("sqlalchemy.ext.asyncio.create_async_engine", return_value=_mock_engine):
+    if "src.db.queries" in sys.modules:
+        import src.db.queries as _queries_mod
+        _queries_mod.engine = _mock_engine
+
+    from fastapi.testclient import TestClient
+
+    from src.api.deps import get_session
+    from src.api.main import app
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +140,7 @@ def mock_settings():
 
 
 @contextmanager
-def _patched_auth(mock_settings, api_key_record=None, workspace_record=None):
+def _patched_auth(mock_settings_obj, api_key_record=None, workspace_record=None):
     """Context manager that patches middleware DB lookups for API key auth.
 
     If *api_key_record* is ``None``, ``get_api_key_by_hash`` returns ``None``
@@ -107,8 +153,8 @@ def _patched_auth(mock_settings, api_key_record=None, workspace_record=None):
     mock_session.commit = AsyncMock()
 
     with (
-        patch("src.api.middleware.settings", mock_settings),
-        patch("src.api.main.settings", mock_settings),
+        patch("src.api.middleware.settings", mock_settings_obj),
+        patch("src.api.main.settings", mock_settings_obj),
         patch("src.api.middleware.async_session_factory", return_value=mock_session_ctx),
         patch(
             "src.api.middleware.get_api_key_by_hash",
@@ -143,9 +189,6 @@ def authed_client(mock_settings, mock_db_session):
 
     All middleware DB calls are mocked so a ``Bearer cmo_...`` key is accepted.
     """
-    from src.api.deps import get_session
-    from src.api.main import app
-
     async def override_get_session():
         yield mock_db_session
 
@@ -164,9 +207,6 @@ def authed_client(mock_settings, mock_db_session):
 @pytest.fixture()
 def unauthed_client(mock_settings, mock_db_session):
     """TestClient with NO valid auth — for testing auth rejection."""
-    from src.api.deps import get_session
-    from src.api.main import app
-
     async def override_get_session():
         yield mock_db_session
 
@@ -182,8 +222,15 @@ def unauthed_client(mock_settings, mock_db_session):
     app.dependency_overrides.clear()
 
 
-def _auth_headers(raw_key: str = VALID_RAW_KEY) -> dict[str, str]:
-    return {"Authorization": f"Bearer {raw_key}"}
+def _auth_headers(
+    raw_key: str = VALID_RAW_KEY,
+    workspace_id: str = WORKSPACE_ID,
+) -> dict[str, str]:
+    """Return headers that authenticate via API key and identify the workspace."""
+    return {
+        "Authorization": f"Bearer {raw_key}",
+        "X-Workspace-Id": workspace_id,
+    }
 
 
 # ===========================================================================
@@ -203,9 +250,6 @@ class TestApiKeyAuthMiddleware:
 
     def test_invalid_key_returns_401(self, mock_settings, mock_db_session):
         """Request with unknown key returns 401 AUTH_INVALID_KEY."""
-        from src.api.deps import get_session
-        from src.api.main import app
-
         async def override_get_session():
             yield mock_db_session
 
@@ -226,8 +270,6 @@ class TestApiKeyAuthMiddleware:
 
     def test_valid_key_sets_workspace_id(self, authed_client):
         """Valid API key sets workspace_id on request.state (verified via successful request)."""
-        # A valid key should pass through middleware and reach the route.
-        # GET /campaigns requires workspace_id — if middleware sets it, route works.
         with patch(
             "src.api.main.list_campaigns",
             new_callable=AsyncMock,
@@ -242,14 +284,12 @@ class TestApiKeyAuthMiddleware:
             patch("src.api.main.async_session_factory") as mock_sf,
             patch("redis.asyncio.Redis.from_url") as mock_redis_cls,
         ):
-            # Mock DB check
             mock_session_ctx = AsyncMock()
             mock_session = AsyncMock()
             mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
             mock_sf.return_value = mock_session_ctx
 
-            # Mock Redis check
             mock_redis = AsyncMock()
             mock_redis.ping = AsyncMock()
             mock_redis.aclose = AsyncMock()
@@ -265,9 +305,6 @@ class TestApiKeyAuthMiddleware:
 
     def test_webhooks_are_exempt_from_auth(self, unauthed_client):
         """Webhook endpoints skip API key auth (HMAC is used instead)."""
-        # We just need to verify middleware doesn't reject with AUTH_MISSING_KEY.
-        # The HMAC middleware will reject without a signature, but that's a
-        # separate concern — the error should NOT be AUTH_MISSING_KEY.
         resp = unauthed_client.post(
             "/webhooks/n8n",
             json={
@@ -283,8 +320,6 @@ class TestApiKeyAuthMiddleware:
 
     def test_demo_endpoints_are_exempt_from_auth(self, unauthed_client):
         """Paths starting with /demo skip API key auth."""
-        # Demo mode is off, so /demo will 404 or 405. But the auth middleware
-        # should not block it — we verify no AUTH_MISSING_KEY error.
         resp = unauthed_client.get("/demo")
         # 404 or 405 is acceptable — just not 401 AUTH_MISSING_KEY
         if resp.status_code == 401:
@@ -293,9 +328,6 @@ class TestApiKeyAuthMiddleware:
 
     def test_admin_key_allows_workspace_creation(self, mock_settings, mock_db_session):
         """POST /api/v1/workspaces with admin key succeeds."""
-        from src.api.deps import get_session
-        from src.api.main import app
-
         async def override_get_session():
             yield mock_db_session
 
@@ -359,7 +391,7 @@ class TestRequestIdMiddleware:
             mock_redis_cls.return_value = mock_redis
 
             resp = unauthed_client.get("/health")
-        assert "X-Request-Id" in resp.headers
+        assert "x-request-id" in resp.headers
 
     def test_request_id_is_valid_uuid(self, unauthed_client):
         """The X-Request-Id header value is a valid UUID."""
@@ -379,7 +411,7 @@ class TestRequestIdMiddleware:
             mock_redis_cls.return_value = mock_redis
 
             resp = unauthed_client.get("/health")
-        request_id = resp.headers["X-Request-Id"]
+        request_id = resp.headers["x-request-id"]
         # Should not raise ValueError
         parsed = uuid.UUID(request_id)
         assert str(parsed) == request_id
@@ -393,35 +425,32 @@ class TestRequestIdMiddleware:
 class TestHealthEndpoint:
     """Validates /health returns proper structure when services are up."""
 
+    @contextmanager
     def _mock_health_deps(self):
-        """Return context manager that mocks DB, Redis, and ClickHouse for health."""
-        @contextmanager
-        def _ctx():
-            with (
-                patch("src.api.main.async_session_factory") as mock_sf,
-                patch("redis.asyncio.Redis.from_url") as mock_redis_cls,
-                patch("src.api.main.settings") as mock_settings_local,
-            ):
-                # DB
-                mock_session_ctx = AsyncMock()
-                mock_session = AsyncMock()
-                mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
-                mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
-                mock_sf.return_value = mock_session_ctx
+        """Context manager that mocks DB, Redis, and ClickHouse for health."""
+        with (
+            patch("src.api.main.async_session_factory") as mock_sf,
+            patch("redis.asyncio.Redis.from_url") as mock_redis_cls,
+            patch("src.api.main.settings") as mock_settings_local,
+        ):
+            # DB
+            mock_session_ctx = AsyncMock()
+            mock_session = AsyncMock()
+            mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sf.return_value = mock_session_ctx
 
-                # Redis
-                mock_redis = AsyncMock()
-                mock_redis.ping = AsyncMock()
-                mock_redis.aclose = AsyncMock()
-                mock_redis_cls.return_value = mock_redis
+            # Redis
+            mock_redis = AsyncMock()
+            mock_redis.ping = AsyncMock()
+            mock_redis.aclose = AsyncMock()
+            mock_redis_cls.return_value = mock_redis
 
-                # ClickHouse — patch at module level
-                mock_settings_local.REDIS_URL = "redis://localhost:6379/15"
-                mock_settings_local.CLICKHOUSE_URL = "clickhouse://localhost:9000/cmo_test"
+            # Settings for health endpoint
+            mock_settings_local.REDIS_URL = "redis://localhost:6379/15"
+            mock_settings_local.CLICKHOUSE_URL = "clickhouse://localhost:9000/cmo_test"
 
-                yield
-
-        return _ctx()
+            yield
 
     def test_health_returns_200_with_status_ok(self, unauthed_client):
         """GET /health returns 200 with status 'ok' when DB and Redis are up."""
@@ -477,7 +506,6 @@ class TestStructuredErrors:
 
     def test_422_validation_error_returns_structured_error(self, authed_client):
         """422 validation error returns {error_code: 'VALIDATION_ERROR', details: ...}."""
-        # POST /campaigns with empty name (violates min_length=1)
         resp = authed_client.post(
             "/campaigns",
             json={"name": ""},
@@ -528,7 +556,7 @@ class TestPagination:
             "src.api.main.list_campaigns",
             new_callable=AsyncMock,
             return_value=([], 0),
-        ) as mock_list:
+        ):
             resp = authed_client.get(
                 "/campaigns?page_size=500",
                 headers=_auth_headers(),
@@ -630,10 +658,9 @@ class TestExportEndpoints:
             headers=_auth_headers(),
         )
         assert resp.status_code == 200
-        assert "Content-Disposition" in resp.headers
-        assert "attachment" in resp.headers["Content-Disposition"]
+        assert "content-disposition" in resp.headers
+        assert "attachment" in resp.headers["content-disposition"]
         assert resp.headers["content-type"].startswith("text/csv")
-        # Verify CSV has header row
         lines = resp.text.strip().split("\n")
         assert len(lines) >= 2  # header + at least 1 data row
         assert "brief_id" in lines[0]
@@ -667,9 +694,6 @@ class TestWorkspaceProvisioning:
 
     def test_create_workspace_returns_201_and_api_key(self, mock_settings, mock_db_session):
         """POST /api/v1/workspaces creates workspace and returns API key."""
-        from src.api.deps import get_session
-        from src.api.main import app
-
         async def override_get_session():
             yield mock_db_session
 

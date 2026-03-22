@@ -128,6 +128,32 @@ class ApiKey(Base):
     last_used_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="viewer")
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class WorkspaceInvitation(Base):
+    __tablename__ = "workspace_invitations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="viewer")
+    invited_by: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+
+
 # ---------------------------------------------------------------------------
 # Query functions — workspace_id is MANDATORY on every query
 # ---------------------------------------------------------------------------
@@ -421,6 +447,135 @@ async def update_api_key_last_used(
 
 
 # ---------------------------------------------------------------------------
+# User & invitation query functions
+# ---------------------------------------------------------------------------
+
+
+async def create_user(
+    session: AsyncSession,
+    workspace_id: str,
+    email: str,
+    name: str,
+    role: str = "viewer",
+) -> User:
+    """Create a user in a workspace."""
+    log.info("db.create_user", workspace_id=workspace_id, email=email, role=role)
+    user = User(workspace_id=workspace_id, email=email, name=name, role=role)
+    session.add(user)
+    await session.flush()
+    return user
+
+
+async def get_user(
+    session: AsyncSession,
+    user_id: str,
+    workspace_id: str,
+) -> User | None:
+    """Get a user by ID, scoped to workspace."""
+    result = await session.execute(
+        select(User)
+        .where(User.id == user_id)
+        .where(User.workspace_id == workspace_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_email(
+    session: AsyncSession,
+    email: str,
+    workspace_id: str,
+) -> User | None:
+    """Get a user by email, scoped to workspace."""
+    result = await session.execute(
+        select(User)
+        .where(User.email == email)
+        .where(User.workspace_id == workspace_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_users(
+    session: AsyncSession,
+    workspace_id: str,
+) -> Sequence[User]:
+    """List all users in a workspace."""
+    result = await session.execute(
+        select(User)
+        .where(User.workspace_id == workspace_id)
+        .where(User.is_active == True)  # noqa: E712
+        .order_by(User.created_at)
+    )
+    return result.scalars().all()
+
+
+async def update_user_role(
+    session: AsyncSession,
+    user_id: str,
+    workspace_id: str,
+    role: str,
+) -> bool:
+    """Update a user's role. Returns True if found."""
+    result = await session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .where(User.workspace_id == workspace_id)
+        .values(role=role)
+    )
+    await session.flush()
+    return (result.rowcount or 0) > 0
+
+
+async def deactivate_user(
+    session: AsyncSession,
+    user_id: str,
+    workspace_id: str,
+) -> bool:
+    """Deactivate a user. Returns True if found."""
+    result = await session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .where(User.workspace_id == workspace_id)
+        .values(is_active=False)
+    )
+    await session.flush()
+    return (result.rowcount or 0) > 0
+
+
+async def create_invitation(
+    session: AsyncSession,
+    workspace_id: str,
+    email: str,
+    role: str,
+    invited_by: str,
+) -> WorkspaceInvitation:
+    """Create a workspace invitation."""
+    log.info("db.create_invitation", workspace_id=workspace_id, email=email, role=role)
+    invitation = WorkspaceInvitation(
+        workspace_id=workspace_id,
+        email=email,
+        role=role,
+        invited_by=invited_by,
+    )
+    session.add(invitation)
+    await session.flush()
+    return invitation
+
+
+async def list_invitations(
+    session: AsyncSession,
+    workspace_id: str,
+) -> Sequence[WorkspaceInvitation]:
+    """List pending invitations for a workspace."""
+    result = await session.execute(
+        select(WorkspaceInvitation)
+        .where(WorkspaceInvitation.workspace_id == workspace_id)
+        .where(WorkspaceInvitation.status == "pending")
+        .order_by(WorkspaceInvitation.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
 # OmniGTM ORM models
 # ---------------------------------------------------------------------------
 
@@ -517,6 +672,20 @@ class OutcomeEventRecord(Base):
     opportunity_id: Mapped[str | None] = mapped_column(String, nullable=True)
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     details: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class NotificationRecord(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    notification_type: Mapped[str] = mapped_column(String, nullable=False)
+    priority: Mapped[str] = mapped_column(String, nullable=False, default="medium")
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True)
+    read: Mapped[bool] = mapped_column(default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -731,3 +900,78 @@ async def list_seller_briefs_by_action(
         .limit(limit)
     )
     return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# Notification query functions — workspace_id MANDATORY on every query
+# ---------------------------------------------------------------------------
+
+
+async def save_notification(
+    session: AsyncSession,
+    workspace_id: str,
+    notification_type: str,
+    priority: str,
+    title: str,
+    message: str,
+    metadata: dict[str, Any] | None = None,
+) -> NotificationRecord:
+    """Persist a notification."""
+    record = NotificationRecord(
+        workspace_id=workspace_id,
+        notification_type=notification_type,
+        priority=priority,
+        title=title,
+        message=message,
+        metadata_=metadata,
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+async def list_notifications(
+    session: AsyncSession,
+    workspace_id: str,
+    unread_only: bool = False,
+    limit: int = 50,
+) -> Sequence[NotificationRecord]:
+    """List notifications for a workspace."""
+    query = (
+        select(NotificationRecord)
+        .where(NotificationRecord.workspace_id == workspace_id)
+    )
+    if unread_only:
+        query = query.where(NotificationRecord.read == False)  # noqa: E712
+    query = query.order_by(NotificationRecord.created_at.desc()).limit(limit)
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def mark_notification_read(
+    session: AsyncSession,
+    notification_id: str,
+    workspace_id: str,
+) -> bool:
+    """Mark a notification as read. Returns True if found."""
+    result = await session.execute(
+        update(NotificationRecord)
+        .where(NotificationRecord.id == notification_id)
+        .where(NotificationRecord.workspace_id == workspace_id)
+        .values(read=True)
+    )
+    await session.flush()
+    return (result.rowcount or 0) > 0
+
+
+async def count_unread_notifications(
+    session: AsyncSession,
+    workspace_id: str,
+) -> int:
+    """Count unread notifications for a workspace."""
+    result = await session.execute(
+        select(func.count(NotificationRecord.id))
+        .where(NotificationRecord.workspace_id == workspace_id)
+        .where(NotificationRecord.read == False)  # noqa: E712
+    )
+    return result.scalar() or 0
