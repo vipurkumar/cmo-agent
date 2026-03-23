@@ -45,6 +45,9 @@ async def handle_qualification_batch(
 
     Pulls account_ids and campaign_id from payload, builds a
     QualificationState, runs the graph, and logs results to ClickHouse.
+
+    When accounts were uploaded directly (no CRM), fetches full account data
+    from DB so the data_ingester can skip CRM calls.
     """
     account_ids: list[str] = payload.get("account_ids", [])
     campaign_id: str = payload.get("campaign_id", "")
@@ -58,10 +61,42 @@ async def handle_qualification_batch(
 
     thread_id = f"qual-{workspace_id}-{campaign_id}-{uuid.uuid4().hex[:8]}"
 
+    # Try to fetch full account data from DB (uploaded accounts)
+    # If found, pass complete dicts so data_ingester skips CRM
+    raw_accounts: list[dict] = []
+    if campaign_id:
+        try:
+            from src.db.queries import async_session_factory, get_campaign_accounts
+            async with async_session_factory() as session:
+                uploaded = await get_campaign_accounts(
+                    session=session,
+                    campaign_id=campaign_id,
+                    workspace_id=workspace_id,
+                )
+                if uploaded:
+                    raw_accounts = uploaded
+                    log.info(
+                        "handler.qualification_batch.loaded_uploaded_accounts",
+                        workspace_id=workspace_id,
+                        campaign_id=campaign_id,
+                        count=len(uploaded),
+                    )
+        except Exception as exc:
+            log.warning(
+                "handler.qualification_batch.uploaded_account_fetch_failed",
+                workspace_id=workspace_id,
+                campaign_id=campaign_id,
+                error=str(exc),
+            )
+
+    # Fall back to ID-only mode if no uploaded accounts found
+    if not raw_accounts:
+        raw_accounts = [{"id": aid} for aid in account_ids]
+
     initial_state: QualificationState = {
         "thread_id": thread_id,
         "workspace_id": workspace_id,
-        "raw_accounts": [{"id": aid} for aid in account_ids],
+        "raw_accounts": raw_accounts,
     }
 
     graph = await create_qualification_graph()

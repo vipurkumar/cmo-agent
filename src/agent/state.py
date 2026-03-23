@@ -303,6 +303,23 @@ class SellerBrief(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# OmniGTM Agent — Draft Email (no-send mode)
+# ---------------------------------------------------------------------------
+
+
+class DraftEmail(BaseModel):
+    account_id: str
+    contact_id: str
+    contact_name: str
+    contact_email: str
+    subject_line: str
+    body: str
+    personalization_score: float = 0.0
+    value_prop_used: str = ""
+    stage: int = 1
+
+
+# ---------------------------------------------------------------------------
 # OmniGTM Agent — Feedback & Outcomes
 # ---------------------------------------------------------------------------
 
@@ -393,3 +410,9 @@ class QualificationState(TypedDict, total=False):
     # Phase 4: Automation
     auto_outbound_triggered: bool
     auto_outbound_skip_reason: str | None
+
+    # Draft emails (no-send mode)
+    draft_emails: list[DraftEmail]
+
+    # Enrichment data from data_ingester
+    enrichment: dict

@@ -235,6 +235,60 @@ class QualifyBatchRequest(BaseModel):
     max_accounts: int = 50
 
 
+# ---------------------------------------------------------------------------
+# Account upload schemas (no-CRM flow)
+# ---------------------------------------------------------------------------
+
+
+class ContactInput(BaseModel):
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+    role: str | None = None
+
+
+class AccountInput(BaseModel):
+    company_name: str = Field(..., min_length=1, max_length=255)
+    domain: str | None = None
+    industry: str | None = None
+    employee_count: int | None = None
+    revenue: float | None = None
+    contacts: list[ContactInput] = Field(default_factory=list)
+
+
+class IngestAccountsRequest(BaseModel):
+    accounts: list[AccountInput] = Field(..., min_length=1, max_length=200)
+    trigger_qualification: bool = False
+
+
+class IngestAccountsResponse(BaseModel):
+    accounts_created: int
+    job_id: str | None = None
+    campaign_id: str
+
+
+# ---------------------------------------------------------------------------
+# Draft email schemas (no-send mode)
+# ---------------------------------------------------------------------------
+
+
+class DraftEmailResponse(BaseModel):
+    account_id: str
+    contact_id: str
+    contact_name: str
+    contact_email: str
+    subject_line: str
+    body: str
+    personalization_score: float = 0.0
+    value_prop_used: str = ""
+    stage: int = 1
+
+
+class DraftEmailListResponse(BaseModel):
+    drafts: list[DraftEmailResponse]
+    total: int
+
+
 class QualifyBatchResponse(BaseModel):
     job_id: str
     queue: str = "batch"

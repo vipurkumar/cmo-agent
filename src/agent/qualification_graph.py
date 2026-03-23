@@ -23,6 +23,7 @@ from src.agent.nodes.brief_reviewer import brief_reviewer
 from src.agent.nodes.contact_ranker import contact_ranker
 from src.agent.nodes.crm_writer import crm_writer
 from src.agent.nodes.data_ingester import data_ingester
+from src.agent.nodes.draft_email_generator import draft_email_generator
 from src.agent.nodes.entity_resolver import entity_resolver
 from src.agent.nodes.icp_scorer import icp_scorer
 from src.agent.nodes.pain_inferrer import pain_inferrer
@@ -33,14 +34,27 @@ from src.agent.nodes.zoho_writer import zoho_writer
 from src.agent.state import QualificationState
 from src.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Account iteration routing
 # ---------------------------------------------------------------------------
 
 
 def _after_auto_outbound(state: QualificationState) -> str:
-    """After auto-outbound gate, advance to next account or end."""
+    """After auto-outbound gate, route to draft email generator if triggered."""
+    auto_triggered = state.get("auto_outbound_triggered", False)
+    recommendation = state.get("action_recommendation")
+    is_pursue_now = recommendation and recommendation.action.value == "pursue_now"
+
+    # Generate draft emails when auto-outbound triggered or action is pursue_now
+    # (in draft-only mode, auto_outbound_triggered is set without enqueuing)
+    if auto_triggered or is_pursue_now:
+        return "draft_email_generator"
+
+    return _after_draft_email(state)
+
+
+def _after_draft_email(state: QualificationState) -> str:
+    """After draft email generation, advance to next account or end."""
     accounts = state.get("accounts", [])
     current = state.get("current_account")
 
@@ -153,6 +167,9 @@ def build_qualification_graph() -> StateGraph:
     # Phase 4: Narrow automation
     graph.add_node("auto_outbound_gate", auto_outbound_gate)
 
+    # Phase 4b: Draft email generation (no-send mode)
+    graph.add_node("draft_email_generator", draft_email_generator)
+
     # --- Add edges ---
     # Ingestion phase
     graph.add_edge(START, "data_ingester")
@@ -174,9 +191,10 @@ def build_qualification_graph() -> StateGraph:
     graph.add_edge("crm_writer", "zoho_writer")
     graph.add_edge("zoho_writer", "task_creator")
 
-    # Phase 4: Auto-outbound gate → Next account
+    # Phase 4: Auto-outbound gate → Draft emails → Next account
     graph.add_edge("task_creator", "auto_outbound_gate")
     graph.add_conditional_edges("auto_outbound_gate", _after_auto_outbound)
+    graph.add_conditional_edges("draft_email_generator", _after_draft_email)
 
     return graph
 

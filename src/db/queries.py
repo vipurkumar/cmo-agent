@@ -975,3 +975,245 @@ async def count_unread_notifications(
         .where(NotificationRecord.read == False)  # noqa: E712
     )
     return result.scalar() or 0
+
+
+# ---------------------------------------------------------------------------
+# Campaign account upload (no-CRM flow)
+# ---------------------------------------------------------------------------
+
+
+class CampaignAccountLink(Base):
+    """Links uploaded accounts to campaigns with source tracking."""
+    __tablename__ = "campaign_account_links"
+
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
+    campaign_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String, nullable=False, default="manual_upload")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DraftEmailRecord(Base):
+    """Persists generated draft emails (no-send mode)."""
+    __tablename__ = "draft_emails"
+
+    id = Column(PG_UUID(as_uuid=False), primary_key=True, server_default=text("gen_random_uuid()"))
+    workspace_id = Column(PG_UUID(as_uuid=False), nullable=False, index=True)
+    campaign_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    account_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    contact_id: Mapped[str] = mapped_column(String, nullable=False)
+    contact_name: Mapped[str] = mapped_column(String, nullable=False)
+    contact_email: Mapped[str] = mapped_column(String, nullable=False)
+    subject_line: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    personalization_score: Mapped[float] = mapped_column(Float, default=0.0)
+    value_prop_used: Mapped[str | None] = mapped_column(String, nullable=True)
+    stage: Mapped[int] = mapped_column(Integer, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+async def create_campaign_accounts(
+    session: AsyncSession,
+    campaign_id: str,
+    workspace_id: str,
+    accounts: list[dict],
+) -> list[Account]:
+    """Bulk-create accounts and contacts from direct upload, linking them to a campaign.
+
+    Each item in ``accounts`` should have: company_name, domain?, industry?,
+    employee_count?, revenue?, contacts?: [{email, first_name?, last_name?, role?}]
+
+    Returns the created Account ORM objects.
+    """
+    log.info(
+        "db.create_campaign_accounts",
+        workspace_id=workspace_id,
+        campaign_id=campaign_id,
+        count=len(accounts),
+    )
+    created: list[Account] = []
+
+    for acct_data in accounts:
+        account = Account(
+            workspace_id=workspace_id,
+            company_name=acct_data["company_name"],
+            domain=acct_data.get("domain"),
+            metadata_={
+                "source": "manual_upload",
+                "campaign_id": campaign_id,
+                "industry": acct_data.get("industry"),
+                "employee_count": acct_data.get("employee_count"),
+                "revenue": acct_data.get("revenue"),
+            },
+        )
+        session.add(account)
+        await session.flush()  # get the generated id
+
+        # Link account to campaign
+        link = CampaignAccountLink(
+            workspace_id=workspace_id,
+            campaign_id=campaign_id,
+            account_id=account.id,
+            source="manual_upload",
+        )
+        session.add(link)
+
+        # Create contacts if provided
+        for ct in acct_data.get("contacts", []):
+            contact = Contact(
+                workspace_id=workspace_id,
+                account_id=account.id,
+                email=ct["email"],
+                first_name=ct.get("first_name"),
+                last_name=ct.get("last_name"),
+                role=ct.get("role"),
+            )
+            session.add(contact)
+
+        created.append(account)
+
+    await session.flush()
+    return created
+
+
+async def get_campaign_accounts(
+    session: AsyncSession,
+    campaign_id: str,
+    workspace_id: str,
+) -> list[dict]:
+    """Fetch uploaded accounts for a campaign as raw dicts suitable for raw_accounts state.
+
+    Returns list of dicts with: id, company_name, domain, industry,
+    employee_count, revenue, contacts.
+    """
+    log.debug("db.get_campaign_accounts", campaign_id=campaign_id, workspace_id=workspace_id)
+
+    # Get account ids linked to this campaign
+    link_result = await session.execute(
+        select(CampaignAccountLink.account_id)
+        .where(CampaignAccountLink.campaign_id == campaign_id)
+        .where(CampaignAccountLink.workspace_id == workspace_id)
+    )
+    account_ids = [row[0] for row in link_result.all()]
+
+    if not account_ids:
+        return []
+
+    # Fetch accounts
+    acct_result = await session.execute(
+        select(Account)
+        .where(Account.id.in_(account_ids))
+        .where(Account.workspace_id == workspace_id)
+    )
+    accounts = acct_result.scalars().all()
+
+    # Fetch all contacts for these accounts
+    ct_result = await session.execute(
+        select(Contact)
+        .where(Contact.account_id.in_(account_ids))
+        .where(Contact.workspace_id == workspace_id)
+    )
+    contacts = ct_result.scalars().all()
+    contacts_by_account: dict[str, list] = {}
+    for ct in contacts:
+        contacts_by_account.setdefault(ct.account_id, []).append({
+            "id": ct.id,
+            "email": ct.email,
+            "first_name": ct.first_name,
+            "last_name": ct.last_name,
+            "role": ct.role,
+        })
+
+    result = []
+    for acct in accounts:
+        metadata = acct.metadata_ or {}
+        result.append({
+            "id": acct.id,
+            "company_name": acct.company_name,
+            "domain": acct.domain,
+            "industry": metadata.get("industry"),
+            "employee_count": metadata.get("employee_count"),
+            "revenue": metadata.get("revenue"),
+            "contacts": contacts_by_account.get(acct.id, []),
+        })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Draft email persistence (no-send mode)
+# ---------------------------------------------------------------------------
+
+
+async def save_draft_emails(
+    session: AsyncSession,
+    workspace_id: str,
+    campaign_id: str,
+    account_id: str,
+    drafts: list[dict],
+) -> list[DraftEmailRecord]:
+    """Persist generated draft emails for an account."""
+    log.info(
+        "db.save_draft_emails",
+        workspace_id=workspace_id,
+        campaign_id=campaign_id,
+        account_id=account_id,
+        count=len(drafts),
+    )
+    records = []
+    for draft in drafts:
+        record = DraftEmailRecord(
+            workspace_id=workspace_id,
+            campaign_id=campaign_id,
+            account_id=account_id,
+            contact_id=draft["contact_id"],
+            contact_name=draft["contact_name"],
+            contact_email=draft["contact_email"],
+            subject_line=draft["subject_line"],
+            body=draft["body"],
+            personalization_score=draft.get("personalization_score", 0.0),
+            value_prop_used=draft.get("value_prop_used"),
+            stage=draft.get("stage", 1),
+        )
+        session.add(record)
+        records.append(record)
+
+    await session.flush()
+    return records
+
+
+async def get_draft_emails_for_account(
+    session: AsyncSession,
+    account_id: str,
+    workspace_id: str,
+) -> Sequence[DraftEmailRecord]:
+    """Fetch all draft emails for an account."""
+    log.debug("db.get_draft_emails_for_account", account_id=account_id, workspace_id=workspace_id)
+    result = await session.execute(
+        select(DraftEmailRecord)
+        .where(DraftEmailRecord.account_id == account_id)
+        .where(DraftEmailRecord.workspace_id == workspace_id)
+        .order_by(DraftEmailRecord.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+async def get_draft_emails_for_campaign(
+    session: AsyncSession,
+    campaign_id: str,
+    workspace_id: str,
+) -> Sequence[DraftEmailRecord]:
+    """Fetch all draft emails for a campaign."""
+    log.debug(
+        "db.get_draft_emails_for_campaign",
+        campaign_id=campaign_id,
+        workspace_id=workspace_id,
+    )
+    result = await session.execute(
+        select(DraftEmailRecord)
+        .where(DraftEmailRecord.campaign_id == campaign_id)
+        .where(DraftEmailRecord.workspace_id == workspace_id)
+        .order_by(DraftEmailRecord.created_at.desc())
+    )
+    return result.scalars().all()

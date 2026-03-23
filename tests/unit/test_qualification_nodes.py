@@ -591,7 +591,9 @@ class TestAutoOutboundGate:
         state = _passing_state()
 
         p1, p2, p3 = self._patch_guardrails()
-        with p1, p2, p3:
+        with p1, p2, p3, \
+             patch("src.agent.nodes.auto_outbound_gate.settings") as mock_settings:
+            mock_settings.OUTBOUND_DRAFT_ONLY = False
             result = await auto_outbound_gate(state)
 
         assert result["auto_outbound_triggered"] is True

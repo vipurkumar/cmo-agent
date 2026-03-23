@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     USE_APOLLO_ENRICHMENT: bool = True
     APOLLO_MCP_ENABLED: bool = False  # set True when running inside Claude Code
 
+    # Clay enrichment (optional — requires CLAY_API_KEY)
+    USE_CLAY_ENRICHMENT: bool = False
+
+    # Draft-only mode — generate emails without sending (no n8n/Slack needed)
+    OUTBOUND_DRAFT_ONLY: bool = True
+
     # Demo mode — runs full agent loop with mock tools, no external deps
     DEMO_MODE: bool = False
 
