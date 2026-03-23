@@ -75,6 +75,8 @@ def mock_settings():
     fake.OPENAI_API_KEY = ""
     fake.USE_APOLLO_ENRICHMENT = False
     fake.APOLLO_MCP_ENABLED = False
+    fake.USE_CLAY_ENRICHMENT = False
+    fake.OUTBOUND_DRAFT_ONLY = True
     fake.DEMO_MODE = False
     fake.SLACK_BOT_TOKEN = "xoxb-test"
     fake.SLACK_SIGNING_SECRET = "test-signing-secret"

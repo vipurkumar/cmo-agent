@@ -13,6 +13,13 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-dev --frozen
 
+# Build frontend (multi-stage would be cleaner but keeping it simple)
+COPY frontend/ frontend/
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm && \
+    cd frontend && npm ci && npm run build && \
+    rm -rf node_modules && \
+    apt-get purge -y nodejs npm && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
 # Copy application code
 COPY src/ src/
 COPY knowledge/ knowledge/

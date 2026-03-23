@@ -17,7 +17,7 @@ from redis.asyncio import Redis
 
 from src.agent.state import ActionType, QualificationState
 from src.config import settings
-from src.config.automation import AUTOMATION_DEFAULTS, AUTO_OUTBOUND_THRESHOLDS
+from src.config.automation import AUTO_OUTBOUND_THRESHOLDS, AUTOMATION_DEFAULTS
 from src.db.clickhouse import ClickHouseClient
 from src.guardrails.blocklist import BlocklistEnforcer
 from src.guardrails.kill_switch import KillSwitch
@@ -383,10 +383,24 @@ async def auto_outbound_gate(state: QualificationState) -> dict:
             "auto_outbound_skip_reason": reason,
         }
 
-    # --- All checks passed — enqueue outbound ---
+    # --- All checks passed ---
     seller_brief = state.get("seller_brief")
     brief_id = seller_brief.id if seller_brief else ""
 
+    # Draft-only mode: skip enqueuing to the full outbound graph.
+    # The draft_email_generator node will handle email generation inline.
+    if settings.OUTBOUND_DRAFT_ONLY:
+        log.info(
+            "auto_outbound_gate.draft_only_mode",
+            thread_id=thread_id,
+            workspace_id=workspace_id,
+            account_id=account_id,
+            brief_id=brief_id,
+        )
+        await _log_decision(workspace_id, account_id, True, "draft_only_mode", state)
+        return {"auto_outbound_triggered": True}
+
+    # Full outbound mode: enqueue to outbound graph
     try:
         await enqueue_by_event(
             event_type="brief_to_outbound",

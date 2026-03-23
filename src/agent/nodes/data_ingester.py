@@ -47,6 +47,28 @@ def _get_apollo_adapter():
     return ApolloMCPAdapter(_rate_limiter)
 
 
+def _get_clay_tool():
+    """Lazy-import Clay enrichment tool to avoid circular imports."""
+    if _rate_limiter is None:
+        raise RuntimeError(
+            "data_ingester tools not initialised — call init_tools() first"
+        )
+    from src.tools.clay_enrich import ClayEnrichTool
+
+    return ClayEnrichTool(_rate_limiter)
+
+
+def _has_full_account_data(raw_accounts: list[dict]) -> bool:
+    """Check if raw_accounts contain full data (not just IDs).
+
+    Full data means at least one account has a ``company_name`` field,
+    indicating it was uploaded directly rather than referenced by ID.
+    """
+    if not raw_accounts:
+        return False
+    return bool(raw_accounts[0].get("company_name"))
+
+
 # Default ICP roles to search when discovering contacts via Apollo
 _ICP_ROLES: list[str] = [
     "VP Revenue Operations",
@@ -61,40 +83,60 @@ _ICP_ROLES: list[str] = [
 
 
 async def data_ingester(state: QualificationState) -> dict:
-    """Ingest raw account data from CRM and return typed Account + Contact lists."""
+    """Ingest raw account data and return typed Account + Contact lists.
+
+    Supports three input modes:
+    1. **Direct upload** — raw_accounts has full data (company_name, domain, etc.)
+       → skips CRM entirely, builds Account/Contact objects from the data.
+    2. **Account IDs only** — raw_accounts has just ``{"id": "..."}`` dicts
+       → falls back to CRM reader to fetch full account data.
+    3. **ICP criteria** — no raw_accounts, uses campaign.icp_criteria to search CRM.
+
+    After building accounts, enriches with Apollo (firmographics + contacts)
+    and optionally Clay (technographics + intent signals).
+    """
     thread_id = state["thread_id"]
     workspace_id = state["workspace_id"]
     log.info("data_ingester.start", thread_id=thread_id, workspace_id=workspace_id)
 
-    crm_reader = _get_crm_reader()
-
-    # Determine raw accounts source
     raw_accounts: list[dict] = state.get("raw_accounts") or []
+    has_full_data = _has_full_account_data(raw_accounts)
 
-    # If no raw_accounts provided, try to pull from campaign ICP criteria
-    if not raw_accounts:
-        campaign = state.get("campaign")
-        if campaign and campaign.icp_criteria:
-            log.info(
-                "data_ingester.pulling_from_icp",
-                thread_id=thread_id,
-                workspace_id=workspace_id,
-            )
-            try:
-                raw_accounts = await crm_reader.run(
-                    query_type="icp_search",
-                    criteria=campaign.icp_criteria,
-                    workspace_id=workspace_id,
-                    plan="pro",
-                )
-            except Exception as exc:
-                log.error(
-                    "data_ingester.icp_pull_failed",
+    # --- Path 1: Direct upload — skip CRM entirely ---
+    if has_full_data:
+        log.info(
+            "data_ingester.direct_upload_mode",
+            thread_id=thread_id,
+            workspace_id=workspace_id,
+            account_count=len(raw_accounts),
+        )
+    else:
+        # --- Path 2 & 3: Need CRM for account data ---
+        crm_reader = _get_crm_reader()
+
+        if not raw_accounts:
+            campaign = state.get("campaign")
+            if campaign and campaign.icp_criteria:
+                log.info(
+                    "data_ingester.pulling_from_icp",
                     thread_id=thread_id,
                     workspace_id=workspace_id,
-                    error=str(exc),
                 )
-                return {"error": f"Failed to pull accounts from ICP: {exc}"}
+                try:
+                    raw_accounts = await crm_reader.run(
+                        query_type="icp_search",
+                        criteria=campaign.icp_criteria,
+                        workspace_id=workspace_id,
+                        plan="pro",
+                    )
+                except Exception as exc:
+                    log.error(
+                        "data_ingester.icp_pull_failed",
+                        thread_id=thread_id,
+                        workspace_id=workspace_id,
+                        error=str(exc),
+                    )
+                    return {"error": f"Failed to pull accounts from ICP: {exc}"}
 
     if not raw_accounts:
         log.warning(
@@ -104,7 +146,7 @@ async def data_ingester(state: QualificationState) -> dict:
         )
         return {"accounts": [], "contacts": [], "error": "No raw accounts to ingest"}
 
-    # Optionally initialise the Apollo adapter for enrichment
+    # --- Initialise enrichment adapters ---
     apollo_adapter = None
     if settings.USE_APOLLO_ENRICHMENT:
         try:
@@ -112,6 +154,18 @@ async def data_ingester(state: QualificationState) -> dict:
         except Exception as exc:
             log.warning(
                 "data_ingester.apollo_adapter_init_failed",
+                thread_id=thread_id,
+                workspace_id=workspace_id,
+                error=str(exc),
+            )
+
+    clay_tool = None
+    if settings.USE_CLAY_ENRICHMENT and settings.CLAY_API_KEY:
+        try:
+            clay_tool = _get_clay_tool()
+        except Exception as exc:
+            log.warning(
+                "data_ingester.clay_tool_init_failed",
                 thread_id=thread_id,
                 workspace_id=workspace_id,
                 error=str(exc),
@@ -158,17 +212,40 @@ async def data_ingester(state: QualificationState) -> dict:
                     error=str(exc),
                 )
 
+        # --- Clay enrichment: technographics + intent signals ---
+        if clay_tool and account.domain:
+            try:
+                clay_data = await clay_tool.run(
+                    query=account.domain,
+                    workspace_id=workspace_id,
+                    plan="pro",
+                    query_type="domain",
+                )
+                if clay_data:
+                    metadata = dict(account.metadata)
+                    metadata["clay_enrichment"] = clay_data
+                    account = account.model_copy(update={"metadata": metadata})
+                    log.info(
+                        "data_ingester.clay_enrichment_applied",
+                        thread_id=thread_id,
+                        workspace_id=workspace_id,
+                        account_id=account.id,
+                        domain=account.domain,
+                    )
+            except Exception as exc:
+                log.warning(
+                    "data_ingester.clay_enrichment_failed",
+                    thread_id=thread_id,
+                    workspace_id=workspace_id,
+                    account_id=account.id,
+                    error=str(exc),
+                )
+
         accounts.append(account)
 
-        # Fetch contacts for this account from CRM
-        try:
-            contact_dicts = await crm_reader.run(
-                query_type="contacts_by_account",
-                account_id=account.id,
-                workspace_id=workspace_id,
-                plan="pro",
-            )
-            for cd in contact_dicts or []:
+        # --- Build contacts from direct upload data ---
+        if has_full_data:
+            for cd in raw.get("contacts", []):
                 contact = Contact(
                     id=cd.get("id", ""),
                     workspace_id=workspace_id,
@@ -176,20 +253,42 @@ async def data_ingester(state: QualificationState) -> dict:
                     email=cd.get("email", ""),
                     first_name=cd.get("first_name"),
                     last_name=cd.get("last_name"),
-                    role=cd.get("role", cd.get("title")),
+                    role=cd.get("role"),
                     linkedin_url=cd.get("linkedin_url"),
                     phone=cd.get("phone"),
                 )
                 all_contacts.append(contact)
-        except Exception as exc:
-            log.warning(
-                "data_ingester.contact_fetch_failed",
-                thread_id=thread_id,
-                workspace_id=workspace_id,
-                account_id=account.id,
-                error=str(exc),
-            )
-            # Continue with other accounts even if one fails
+        else:
+            # Fetch contacts from CRM (original path)
+            try:
+                crm_reader = _get_crm_reader()
+                contact_dicts = await crm_reader.run(
+                    query_type="contacts_by_account",
+                    account_id=account.id,
+                    workspace_id=workspace_id,
+                    plan="pro",
+                )
+                for cd in contact_dicts or []:
+                    contact = Contact(
+                        id=cd.get("id", ""),
+                        workspace_id=workspace_id,
+                        account_id=account.id,
+                        email=cd.get("email", ""),
+                        first_name=cd.get("first_name"),
+                        last_name=cd.get("last_name"),
+                        role=cd.get("role", cd.get("title")),
+                        linkedin_url=cd.get("linkedin_url"),
+                        phone=cd.get("phone"),
+                    )
+                    all_contacts.append(contact)
+            except Exception as exc:
+                log.warning(
+                    "data_ingester.contact_fetch_failed",
+                    thread_id=thread_id,
+                    workspace_id=workspace_id,
+                    account_id=account.id,
+                    error=str(exc),
+                )
 
         # --- Apollo contact discovery: find additional contacts ---
         if apollo_adapter and account.domain:

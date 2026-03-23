@@ -46,6 +46,12 @@ export default function CampaignsPage() {
   // Qualification state
   const [qualifyingId, setQualifyingId] = useState<string | null>(null)
 
+  // Account upload modal state
+  const [showAccountModal, setShowAccountModal] = useState(false)
+  const [accountModalCampaignId, setAccountModalCampaignId] = useState<string | null>(null)
+  const [accountsText, setAccountsText] = useState('')
+  const [uploadingAccounts, setUploadingAccounts] = useState(false)
+
   // Toast state
   const [toast, setToast] = useState<Toast | null>(null)
 
@@ -146,6 +152,86 @@ export default function CampaignsPage() {
     setFormIndustries('')
     setFormEmployeeMin('')
     setFormEmployeeMax('')
+  }
+
+  function openAccountUpload(campaignId: string) {
+    setAccountModalCampaignId(campaignId)
+    setAccountsText('')
+    setShowAccountModal(true)
+  }
+
+  function closeAccountModal() {
+    setShowAccountModal(false)
+    setAccountModalCampaignId(null)
+    setAccountsText('')
+  }
+
+  function parseAccountsText(text: string): { company_name: string; domain?: string }[] {
+    return text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const parts = line.split(',').map((s) => s.trim())
+        const result: { company_name: string; domain?: string } = {
+          company_name: parts[0],
+        }
+        if (parts[1]) {
+          result.domain = parts[1]
+        }
+        return result
+      })
+  }
+
+  async function uploadAccounts(e: React.FormEvent) {
+    e.preventDefault()
+    if (!accountModalCampaignId || !accountsText.trim()) return
+
+    const accounts = parseAccountsText(accountsText)
+    if (accounts.length === 0) {
+      showToast('No valid accounts found. Enter one per line: company_name, domain', 'error')
+      return
+    }
+
+    setUploadingAccounts(true)
+    try {
+      await api(`/api/v1/campaigns/${accountModalCampaignId}/accounts`, {
+        method: 'POST',
+        body: JSON.stringify({
+          accounts,
+          trigger_qualification: true,
+        }),
+      })
+      showToast(
+        `${accounts.length} account${accounts.length !== 1 ? 's' : ''} uploaded and qualification triggered.`,
+        'success',
+      )
+      closeAccountModal()
+      await loadCampaigns()
+    } catch (err: any) {
+      showToast(err.message || 'Failed to upload accounts.', 'error')
+    } finally {
+      setUploadingAccounts(false)
+    }
+  }
+
+  function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const csv = event.target?.result as string
+      if (csv) {
+        // Skip header row if it looks like a header
+        const lines = csv.split('\n')
+        const firstLine = lines[0]?.toLowerCase() || ''
+        const hasHeader = firstLine.includes('company') || firstLine.includes('name')
+        const dataLines = hasHeader ? lines.slice(1) : lines
+        setAccountsText(dataLines.join('\n'))
+      }
+    }
+    reader.readAsText(file)
   }
 
   function formatDate(dateStr: string): string {
@@ -267,6 +353,12 @@ export default function CampaignsPage() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => openAccountUpload(campaign.id)}
+                      >
+                        Add Accounts
+                      </button>
                       <button
                         className="btn btn-secondary btn-sm"
                         onClick={() => triggerQualification(campaign.id)}
@@ -390,6 +482,84 @@ export default function CampaignsPage() {
                   disabled={!formName.trim() || creating}
                 >
                   {creating ? 'Creating...' : 'Create Campaign'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Account Upload Modal */}
+      {showAccountModal && (
+        <div className="modal-overlay" onClick={closeAccountModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Add Target Accounts</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
+              Paste accounts (one per line): <strong>company_name, domain</strong>
+              <br />
+              Domain is optional but recommended for enrichment.
+            </p>
+            <form onSubmit={uploadAccounts}>
+              <div className="form-group">
+                <label>Accounts</label>
+                <textarea
+                  value={accountsText}
+                  onChange={(e) => setAccountsText(e.target.value)}
+                  placeholder={`Acme Corp, acme.com\nBigCo Industries, bigco.io\nNovaPay, novapay.io`}
+                  rows={8}
+                  style={{ fontFamily: 'monospace', fontSize: '13px' }}
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Or upload CSV</label>
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={handleCsvUpload}
+                  style={{ fontSize: '13px' }}
+                />
+              </div>
+
+              {accountsText.trim() && (
+                <div
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '12px',
+                  }}
+                >
+                  {parseAccountsText(accountsText).length} account
+                  {parseAccountsText(accountsText).length !== 1 ? 's' : ''} detected
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '8px',
+                  marginTop: '20px',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={closeAccountModal}
+                  disabled={uploadingAccounts}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!accountsText.trim() || uploadingAccounts}
+                >
+                  {uploadingAccounts ? 'Uploading & Qualifying...' : 'Upload & Qualify'}
                 </button>
               </div>
             </form>

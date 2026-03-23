@@ -23,9 +23,13 @@ from src.api.schemas import (
     CreateCampaignResponse,
     CreateWorkspaceRequest,
     CreateWorkspaceResponse,
+    DraftEmailListResponse,
+    DraftEmailResponse,
     FeedbackRequest,
     FeedbackResponse,
     HealthResponse,
+    IngestAccountsRequest,
+    IngestAccountsResponse,
     QualifyBatchRequest,
     QualifyBatchResponse,
     SellerBriefResponse,
@@ -35,9 +39,13 @@ from src.db.queries import (
     async_session_factory,
     create_api_key,
     create_campaign,
+    create_campaign_accounts,
     create_workspace,
     deactivate_api_key,
     get_campaign,
+    get_campaign_accounts,
+    get_draft_emails_for_account,
+    get_draft_emails_for_campaign,
     get_seller_brief,
     get_workspace,
     list_campaigns,
@@ -501,6 +509,119 @@ async def qualify_batch_route(
         queue="batch",
         accounts_queued=len(body.account_ids) or body.max_accounts,
     )
+
+
+@app.post("/api/v1/campaigns/{campaign_id}/accounts", status_code=201, tags=["qualification"])
+async def ingest_accounts_route(
+    campaign_id: str,
+    body: IngestAccountsRequest,
+    session: SessionDep,
+    workspace_id: WorkspaceDep,
+):
+    """Upload target accounts directly (no CRM required).
+
+    Accepts a list of accounts with optional contacts. Stores them in the DB
+    and optionally triggers qualification immediately.
+    """
+    log.info(
+        "api.ingest_accounts",
+        workspace_id=workspace_id,
+        campaign_id=campaign_id,
+        account_count=len(body.accounts),
+    )
+
+    campaign = await get_campaign(
+        session=session, campaign_id=campaign_id, workspace_id=workspace_id
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    # Convert Pydantic models to dicts for DB layer
+    account_dicts = [acct.model_dump() for acct in body.accounts]
+    created = await create_campaign_accounts(
+        session=session,
+        campaign_id=campaign_id,
+        workspace_id=workspace_id,
+        accounts=account_dicts,
+    )
+
+    job_id = None
+    if body.trigger_qualification:
+        account_ids = [a.id for a in created]
+        job_id = await enqueue(
+            queue_name="batch",
+            job_type="qualification_batch",
+            payload={
+                "campaign_id": campaign_id,
+                "account_ids": account_ids,
+                "max_accounts": len(account_ids),
+            },
+            workspace_id=workspace_id,
+        )
+
+    return IngestAccountsResponse(
+        accounts_created=len(created),
+        job_id=job_id,
+        campaign_id=campaign_id,
+    )
+
+
+@app.get("/api/v1/accounts/{account_id}/drafts", tags=["qualification"])
+async def get_account_drafts_route(
+    account_id: str,
+    session: SessionDep,
+    workspace_id: WorkspaceDep,
+):
+    """Fetch generated draft emails for an account."""
+    log.info("api.get_account_drafts", workspace_id=workspace_id, account_id=account_id)
+
+    records = await get_draft_emails_for_account(
+        session=session, account_id=account_id, workspace_id=workspace_id
+    )
+    drafts = [
+        DraftEmailResponse(
+            account_id=r.account_id,
+            contact_id=r.contact_id,
+            contact_name=r.contact_name,
+            contact_email=r.contact_email,
+            subject_line=r.subject_line,
+            body=r.body,
+            personalization_score=r.personalization_score,
+            value_prop_used=r.value_prop_used or "",
+            stage=r.stage,
+        )
+        for r in records
+    ]
+    return DraftEmailListResponse(drafts=drafts, total=len(drafts))
+
+
+@app.get("/api/v1/campaigns/{campaign_id}/drafts", tags=["qualification"])
+async def get_campaign_drafts_route(
+    campaign_id: str,
+    session: SessionDep,
+    workspace_id: WorkspaceDep,
+):
+    """Fetch all generated draft emails for a campaign."""
+    log.info("api.get_campaign_drafts", workspace_id=workspace_id, campaign_id=campaign_id)
+
+    records = await get_draft_emails_for_campaign(
+        session=session, campaign_id=campaign_id, workspace_id=workspace_id
+    )
+    drafts = [
+        DraftEmailResponse(
+            account_id=r.account_id,
+            contact_id=r.contact_id,
+            contact_name=r.contact_name,
+            contact_email=r.contact_email,
+            subject_line=r.subject_line,
+            body=r.body,
+            personalization_score=r.personalization_score,
+            value_prop_used=r.value_prop_used or "",
+            stage=r.stage,
+        )
+        for r in records
+    ]
+    return DraftEmailListResponse(drafts=drafts, total=len(drafts))
 
 
 @app.get("/api/v1/accounts/{account_id}/brief")

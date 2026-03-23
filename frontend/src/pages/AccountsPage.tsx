@@ -31,6 +31,23 @@ interface BriefData {
   recommended_action: string
 }
 
+interface DraftEmail {
+  account_id: string
+  contact_id: string
+  contact_name: string
+  contact_email: string
+  subject_line: string
+  body: string
+  personalization_score: number
+  value_prop_used: string
+  stage: number
+}
+
+interface DraftEmailListResponse {
+  drafts: DraftEmail[]
+  total: number
+}
+
 function scoreColor(val: number) {
   if (val >= 70) return 'var(--success)'
   if (val >= 40) return 'var(--warning)'
@@ -71,6 +88,10 @@ export default function AccountsPage() {
   const [brief, setBrief] = useState<BriefData | null>(null)
   const [briefLoading, setBriefLoading] = useState(false)
 
+  // Draft emails state
+  const [drafts, setDrafts] = useState<DraftEmail[]>([])
+  const [draftsLoading, setDraftsLoading] = useState(false)
+
   useEffect(() => {
     loadScores()
   }, [])
@@ -92,6 +113,7 @@ export default function AccountsPage() {
     setBriefOpen(true)
     setBriefLoading(true)
     setBrief(null)
+    setDrafts([])
     try {
       const data = await api<BriefData>(`/embed/${accountId}/json`)
       setBrief(data)
@@ -102,11 +124,30 @@ export default function AccountsPage() {
     } finally {
       setBriefLoading(false)
     }
+    // Also load draft emails
+    loadDrafts(accountId)
+  }
+
+  async function loadDrafts(accountId: string) {
+    setDraftsLoading(true)
+    try {
+      const data = await api<DraftEmailListResponse>(`/api/v1/accounts/${accountId}/drafts`)
+      setDrafts(data.drafts ?? [])
+    } catch {
+      setDrafts([])
+    } finally {
+      setDraftsLoading(false)
+    }
   }
 
   function closeBrief() {
     setBriefOpen(false)
     setBrief(null)
+    setDrafts([])
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text).catch(() => {})
   }
 
   const filtered = scores.filter((s) => {
@@ -347,6 +388,54 @@ export default function AccountsPage() {
                     </ul>
                   </div>
                 )}
+
+                {/* Draft Emails */}
+                <div className="section">
+                  <div className="section-title">Draft Emails</div>
+                  {draftsLoading ? (
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Loading drafts...</div>
+                  ) : drafts.length === 0 ? (
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                      No draft emails generated yet. Run qualification with &quot;Pursue Now&quot; accounts to generate drafts.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {drafts.map((draft, i) => (
+                        <div
+                          key={i}
+                          className="card"
+                          style={{ background: 'var(--bg-secondary)', padding: '12px 16px' }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div>
+                              <span style={{ fontWeight: 600, fontSize: '13px' }}>{draft.contact_name}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '12px', marginLeft: '8px' }}>
+                                {draft.contact_email}
+                              </span>
+                            </div>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              onClick={() => copyToClipboard(`Subject: ${draft.subject_line}\n\n${draft.body}`)}
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <div style={{ fontSize: '13px', fontWeight: 500, marginBottom: '6px', color: 'var(--text-primary)' }}>
+                            Subject: {draft.subject_line}
+                          </div>
+                          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>
+                            {draft.body}
+                          </div>
+                          {draft.value_prop_used && (
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                              Hook: {draft.value_prop_used}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="empty-state">
